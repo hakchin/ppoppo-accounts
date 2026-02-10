@@ -75,4 +75,9 @@ This is an upstream constraint in `rusty_paseto` and cannot be resolved at the p
 
 ## License
 
-MIT
+Licensed under either of
+
+- [MIT license](LICENSE-MIT)
+- [Apache License, Version 2.0](LICENSE-APACHE)
+
+at your option.
