@@ -1,0 +1,40 @@
+[package]
+name = "ppoppo-accounts"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+license = "MIT"
+description = "OAuth2 PKCE client and PASETO v4.public token verification for Ppoppo Accounts System (PAS)"
+repository = "https://github.com/ppogroup/ppoppo-accounts"
+homepage = "https://accounts.ppoppo.com"
+documentation = "https://docs.rs/ppoppo-accounts"
+keywords = ["oauth2", "pkce", "paseto", "authentication"]
+categories = ["authentication", "web-programming"]
+
+[features]
+default = ["oauth", "token"]
+oauth = ["dep:reqwest", "dep:sha2", "dep:rand", "dep:urlencoding", "dep:base64"]
+token = ["dep:rusty_paseto", "dep:hex", "dep:base64"]
+
+[dependencies]
+# Token verification
+rusty_paseto = { version = "0.9", default-features = false, features = ["batteries_included", "v4_public"], optional = true }
+hex = { version = "0.4", optional = true }
+
+# OAuth2 HTTP client
+reqwest = { version = "0.13", default-features = false, features = ["json", "form", "rustls", "webpki-roots"], optional = true }
+
+# PKCE
+sha2 = { version = "0.10", optional = true }
+base64 = { version = "0.22", optional = true }
+rand = { version = "0.9", optional = true }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# URL encoding
+urlencoding = { version = "2", optional = true }
+
+# Error handling
+thiserror = "2"
