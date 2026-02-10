@@ -9,11 +9,13 @@ use serde_json::Value as JsonValue;
 
 use crate::error::Error;
 
+const TOKEN_PREFIX: &str = "v4.public.";
+
 /// Ed25519 public key (32 bytes) for token verification.
 ///
 /// Independent implementation from `pas-token` — only needs hex parsing
 /// and PASETO verification, no PASERK key ID computation.
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PublicKey {
     bytes: [u8; 32],
 }
@@ -77,7 +79,7 @@ pub fn verify_v4_public_access_token(
     expected_issuer: &str,
     expected_audience: &str,
 ) -> Result<VerifiedClaims, Error> {
-    if !token_str.starts_with("v4.public.") {
+    if !token_str.starts_with(TOKEN_PREFIX) {
         return Err(Error::Token("invalid token format".into()));
     }
 
@@ -104,42 +106,33 @@ pub fn verify_v4_public_access_token(
     let json_value: JsonValue = serde_json::from_str(&payload_str)
         .map_err(|e| Error::Token(e.to_string()))?;
 
-    // Validate issuer
-    let actual_issuer = json_value
-        .get("iss")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| Error::Token("missing claim: iss".into()))?;
-    if actual_issuer != expected_issuer {
-        return Err(Error::Token(format!(
-            "iss: expected '{expected_issuer}', got '{actual_issuer}'"
-        )));
-    }
-
-    // Validate audience
-    let actual_audience = json_value
-        .get("aud")
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| Error::Token("missing claim: aud".into()))?;
-    if actual_audience != expected_audience {
-        return Err(Error::Token(format!(
-            "aud: expected '{expected_audience}', got '{actual_audience}'"
-        )));
-    }
+    validate_claim(&json_value, "iss", expected_issuer)?;
+    validate_claim(&json_value, "aud", expected_audience)?;
 
     Ok(VerifiedClaims { inner: json_value })
 }
 
+/// Validates that a JSON claim matches an expected value.
+fn validate_claim(claims: &JsonValue, key: &str, expected: &str) -> Result<(), Error> {
+    let actual = claims
+        .get(key)
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| Error::Token(format!("missing claim: {key}")))?;
+    if actual != expected {
+        return Err(Error::Token(format!(
+            "{key}: expected '{expected}', got '{actual}'"
+        )));
+    }
+    Ok(())
+}
+
 /// Extract key ID from a PASETO token without verifying signature.
-/// Validates v4.public format prefix.
 ///
 /// # Errors
 ///
 /// Returns `Error::Token` if the token format is invalid or the footer
 /// does not contain a `kid` claim.
 pub fn extract_kid_from_token(token_str: &str) -> Result<String, Error> {
-    if !token_str.starts_with("v4.public.") {
-        return Err(Error::Token("invalid token format".into()));
-    }
     let footer_bytes = extract_footer_from_token(token_str)?;
     extract_kid_from_untrusted_footer(&footer_bytes)
 }
@@ -163,7 +156,7 @@ pub(crate) fn extract_kid_from_untrusted_footer(footer_bytes: &[u8]) -> Result<S
 
 /// Extracts the footer bytes from a PASETO token string.
 pub(crate) fn extract_footer_from_token(token_str: &str) -> Result<Vec<u8>, Error> {
-    if !token_str.starts_with("v4.public.") {
+    if !token_str.starts_with(TOKEN_PREFIX) {
         return Err(Error::Token("invalid token format".into()));
     }
 

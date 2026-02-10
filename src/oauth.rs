@@ -241,14 +241,7 @@ impl AuthClient {
             .send()
             .await?;
 
-        if !response.status().is_success() {
-            let status = response.status();
-            let body = response.text().await.unwrap_or_default();
-            return Err(Error::OAuth(format!(
-                "token exchange failed: {status} - {body}"
-            )));
-        }
-
+        let response = Self::ensure_success(response, "token exchange").await?;
         response.json::<TokenResponse>().await.map_err(Into::into)
     }
 
@@ -266,15 +259,23 @@ impl AuthClient {
             .send()
             .await?;
 
-        if !response.status().is_success() {
-            let status = response.status();
-            let body = response.text().await.unwrap_or_default();
-            return Err(Error::OAuth(format!(
-                "userinfo request failed: {status} - {body}"
-            )));
-        }
-
+        let response = Self::ensure_success(response, "userinfo request").await?;
         response.json::<UserInfo>().await.map_err(Into::into)
+    }
+
+    /// Checks HTTP response status; returns the response on success or an error with details.
+    async fn ensure_success(
+        response: reqwest::Response,
+        operation: &str,
+    ) -> Result<reqwest::Response, Error> {
+        if response.status().is_success() {
+            return Ok(response);
+        }
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        Err(Error::OAuth(format!(
+            "{operation} failed: {status} - {body}"
+        )))
     }
 }
 
