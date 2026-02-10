@@ -1,6 +1,10 @@
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
-use rusty_paseto::prelude::*;
+use pasetors::claims::ClaimsValidationRules;
+use pasetors::keys::AsymmetricPublicKey;
+use pasetors::token::UntrustedToken;
+use pasetors::version4::V4;
+use pasetors::{public, Public};
 use serde_json::Value as JsonValue;
 
 use crate::error::Error;
@@ -77,19 +81,27 @@ pub fn verify_v4_public_access_token(
         return Err(Error::Token("invalid token format".into()));
     }
 
-    // Build rusty_paseto public key from raw bytes
-    let key = rusty_paseto::prelude::Key::<32>::from(&public_key.bytes);
-    let pk = PasetoAsymmetricPublicKey::<V4, Public>::from(&key);
+    let pk = AsymmetricPublicKey::<V4>::from(&public_key.bytes[..])
+        .map_err(|e| Error::Token(e.to_string()))?;
 
-    // Extract footer for the parser
-    let footer_bytes = extract_footer_from_token(token_str)?;
-    let footer_str = std::str::from_utf8(&footer_bytes)
-        .map_err(|_| Error::Token("invalid footer encoding".into()))?;
+    // ClaimsValidationRules validates exp, nbf, iat by default
+    let validation_rules = ClaimsValidationRules::new();
 
-    // Parse token (PasetoParser validates exp, nbf, iat by default)
-    let json_value = PasetoParser::<V4, Public>::default()
-        .set_footer(Footer::from(footer_str))
-        .parse(token_str, &pk)
+    let untrusted_token = UntrustedToken::<Public, V4>::try_from(token_str)
+        .map_err(|e| Error::Token(e.to_string()))?;
+
+    // footer is None — the signature cryptographically binds the footer
+    let trusted_token = public::verify(&pk, &untrusted_token, &validation_rules, None, None)
+        .map_err(|e| Error::Token(e.to_string()))?;
+
+    // Parse payload claims to serde_json::Value
+    let payload = trusted_token
+        .payload_claims()
+        .ok_or_else(|| Error::Token("missing payload".into()))?;
+    let payload_str = payload
+        .to_string()
+        .map_err(|e| Error::Token(e.to_string()))?;
+    let json_value: JsonValue = serde_json::from_str(&payload_str)
         .map_err(|e| Error::Token(e.to_string()))?;
 
     // Validate issuer

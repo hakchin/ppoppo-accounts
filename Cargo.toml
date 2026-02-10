@@ -1,6 +1,6 @@
 [package]
 name = "ppoppo-accounts"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 rust-version = "1.85"
 license = "MIT OR Apache-2.0"
@@ -14,11 +14,11 @@ categories = ["authentication", "web-programming"]
 [features]
 default = ["oauth", "token"]
 oauth = ["dep:reqwest", "dep:sha2", "dep:rand", "dep:urlencoding", "dep:base64"]
-token = ["dep:rusty_paseto", "dep:hex", "dep:base64"]
+token = ["dep:pasetors", "dep:hex", "dep:base64"]
 
 [dependencies]
 # Token verification
-rusty_paseto = { version = "0.9", default-features = false, features = ["batteries_included", "v4_public"], optional = true }
+pasetors = { version = "0.7", default-features = false, features = ["v4", "std"], optional = true }
 hex = { version = "0.4", optional = true }
 
 # OAuth2 HTTP client
