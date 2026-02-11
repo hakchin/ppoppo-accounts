@@ -1,10 +1,10 @@
 [package]
 name = "ppoppo-accounts"
-version = "0.1.1"
+version = "0.2.0"
 edition = "2024"
 rust-version = "1.85"
 license = "MIT OR Apache-2.0"
-description = "OAuth2 PKCE client and PASETO v4.public token verification for Ppoppo Accounts System (PAS)"
+description = "OAuth2 PKCE client, PASETO v4.public verification, and Axum auth middleware for Ppoppo Accounts System (PAS)"
 repository = "https://github.com/hakchin/ppoppo-accounts"
 homepage = "https://accounts.ppoppo.com"
 documentation = "https://docs.rs/ppoppo-accounts"
@@ -15,6 +15,7 @@ categories = ["authentication", "web-programming"]
 default = ["oauth", "token"]
 oauth = ["dep:reqwest", "dep:sha2", "dep:rand", "dep:urlencoding", "dep:base64"]
 token = ["dep:pasetors", "dep:hex", "dep:base64"]
+axum = ["oauth", "dep:axum", "dep:axum-extra", "dep:tracing", "dep:time"]
 
 [dependencies]
 # Token verification
@@ -33,8 +34,14 @@ rand = { version = "0.9", optional = true }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
-# URL encoding
+# URL encoding (shared by oauth + axum)
 urlencoding = { version = "2", optional = true }
 
 # Error handling
 thiserror = "2"
+
+# Axum middleware (feature = "axum")
+axum = { version = "0.8", optional = true }
+axum-extra = { version = "0.12", features = ["cookie-private"], optional = true }
+tracing = { version = "0.1", optional = true }
+time = { version = "0.3", optional = true }

@@ -1,0 +1,26 @@
+use crate::oauth::UserInfo;
+
+/// Session data from a successful PAS authentication.
+///
+/// Passed to [`SessionStore::create`](super::SessionStore::create) for the consumer to persist.
+///
+/// # Data ownership
+///
+/// `user_info` is **transient** data from PAS. It should be used for logging or
+/// display at login time, but PAS-owned fields (`ppnum`, `email`) must NOT be
+/// persisted in the consumer's database. Fetch via PAS userinfo API when needed.
+#[derive(Debug, Clone)]
+pub struct NewSession {
+    /// PAS user identifier (OAuth `sub` claim, ULID format).
+    pub ppnum_id: String,
+    /// User ID returned by [`UserStore::find_or_create`](super::UserStore::find_or_create).
+    pub user_id: String,
+    /// PAS refresh token (for token renewal via RTR).
+    pub refresh_token: Option<String>,
+    /// Client `User-Agent` header value.
+    pub user_agent: Option<String>,
+    /// Client IP address.
+    pub ip_address: Option<String>,
+    /// PAS UserInfo snapshot (transient — for display, NOT for DB storage).
+    pub user_info: UserInfo,
+}

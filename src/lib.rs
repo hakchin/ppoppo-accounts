@@ -10,6 +10,9 @@ pub mod ppnum;
 pub mod token;
 pub mod well_known;
 
+#[cfg(feature = "axum")]
+pub mod middleware;
+
 // Re-exports for convenient access
 pub use error::Error;
 #[cfg(feature = "oauth")]
