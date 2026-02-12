@@ -40,7 +40,7 @@ impl PasAuthConfig {
     /// - `PAS_TOKEN_URL`: Override PAS token endpoint
     /// - `PAS_USERINFO_URL`: Override PAS userinfo endpoint
     /// - `PAS_SCOPES`: Comma-separated OAuth2 scopes
-    /// - `DEV_AUTH`: If set, enables dev-login route and disables secure cookies
+    /// - `DEV_AUTH`: Set to `"1"` or `"true"` to enable dev-login route and disable secure cookies
     ///
     /// # Errors
     ///
@@ -69,7 +69,10 @@ impl PasAuthConfig {
         }
 
         let config = builder.build().map_err(AuthError::from)?;
-        let dev_auth = std::env::var("DEV_AUTH").is_ok();
+        let dev_auth = matches!(
+            std::env::var("DEV_AUTH").as_deref(),
+            Ok("1") | Ok("true"),
+        );
 
         let cookie_key = std::env::var("COOKIE_KEY")
             .ok()
