@@ -257,7 +257,10 @@ async fn dev_login(
         .filter(|p| crate::ppnum::is_valid_ppnum(p))
         .unwrap_or_else(|| "77700000001".to_string());
 
-    let test_ppnum_id = format!("dev_{test_ppnum}");
+    // Generate a deterministic ULID-formatted ppnum_id for dev.
+    // ULID = 26 chars of Crockford Base32 [0-9A-HJKMNP-TV-Z].
+    // Digits 0-9 are valid, so zero-pad the 11-digit ppnum to 26 chars.
+    let test_ppnum_id = format!("{:0>26}", test_ppnum);
     let test_email = format!("{test_ppnum}@dev.local");
 
     // UserInfo is #[non_exhaustive] — construct via serde deserialization
