@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use crate::types::KeyId;
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct WellKnownPasetoDocument {
@@ -12,7 +14,7 @@ pub struct WellKnownPasetoDocument {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[non_exhaustive]
 pub struct WellKnownPasetoKey {
-    pub kid: String,
+    pub kid: KeyId,
     pub public_key_hex: String,
     pub status: WellKnownKeyStatus,
     pub created_at: String,

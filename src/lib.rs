@@ -5,9 +5,9 @@ pub mod error;
 pub mod oauth;
 #[cfg(feature = "oauth")]
 pub mod pkce;
-pub mod ppnum;
 #[cfg(feature = "token")]
 pub mod token;
+pub mod types;
 pub mod well_known;
 
 #[cfg(feature = "axum")]
@@ -16,12 +16,12 @@ pub mod middleware;
 // Re-exports for convenient access
 pub use error::Error;
 #[cfg(feature = "oauth")]
-pub use oauth::{
-    AuthClient, AuthorizationRequest, Config, ConfigBuilder, TokenResponse, UserInfo,
-};
+pub use oauth::{AuthClient, AuthorizationRequest, Config, TokenResponse, UserInfo};
+#[cfg(feature = "oauth")]
+pub use url::Url;
 #[cfg(feature = "oauth")]
 pub use pkce::{generate_code_challenge, generate_code_verifier, generate_state};
-pub use ppnum::is_valid_ppnum;
+pub use types::{KeyId, Ppnum, PpnumId, SessionId, UserId};
 #[cfg(feature = "token")]
 pub use token::{
     PublicKey, VerifiedClaims, extract_kid_from_token, parse_public_key_hex,

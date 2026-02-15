@@ -1,6 +1,6 @@
 [package]
 name = "ppoppo-accounts"
-version = "0.2.1"
+version = "0.3.0"
 edition = "2024"
 rust-version = "1.85"
 license = "MIT OR Apache-2.0"
@@ -13,17 +13,22 @@ categories = ["authentication", "web-programming"]
 
 [features]
 default = ["oauth", "token"]
-oauth = ["dep:reqwest", "dep:sha2", "dep:rand", "dep:urlencoding", "dep:base64"]
+oauth = ["dep:reqwest", "dep:sha2", "dep:rand", "dep:base64", "dep:url"]
 token = ["dep:pasetors", "dep:hex", "dep:base64"]
-axum = ["oauth", "dep:axum", "dep:axum-extra", "dep:tracing", "dep:time"]
+axum = ["oauth", "dep:axum", "dep:axum-extra", "dep:tracing", "dep:time", "dep:urlencoding"]
 
 [dependencies]
+# Core types
+derive_more = { version = "2", default-features = false, features = ["display", "from_str", "from", "into"] }
+ulid = { version = "1", features = ["serde"] }
+
 # Token verification
 pasetors = { version = "0.7", default-features = false, features = ["v4", "std"], optional = true }
 hex = { version = "0.4", optional = true }
 
 # OAuth2 HTTP client
 reqwest = { version = "0.13", default-features = false, features = ["json", "form", "rustls", "webpki-roots"], optional = true }
+url = { version = "2", optional = true }
 
 # PKCE
 sha2 = { version = "0.10", optional = true }
@@ -34,9 +39,6 @@ rand = { version = "0.9", optional = true }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
-# URL encoding (shared by oauth + axum)
-urlencoding = { version = "2", optional = true }
-
 # Error handling
 thiserror = "2"
 
@@ -45,3 +47,4 @@ axum = { version = "0.8", optional = true }
 axum-extra = { version = "0.12", features = ["cookie-private"], optional = true }
 tracing = { version = "0.1", optional = true }
 time = { version = "0.3", optional = true }
+urlencoding = { version = "2", optional = true }

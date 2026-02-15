@@ -10,11 +10,10 @@ use serde::Deserialize;
 
 use super::config::PasAuthConfig;
 use super::cookies;
-use super::error::AuthError;
-use super::extractor::SessionStoreDyn;
-use super::state::{AuthState, UserStoreDyn};
+use super::state::AuthState;
 use super::traits::{SessionStore, UserStore};
 use super::types::NewSession;
+use crate::types::PpnumId;
 
 /// Create the PAS authentication router.
 ///
@@ -40,8 +39,8 @@ where
 
     let state = AuthState {
         client: Arc::new(config.client),
-        user_store: Arc::new(user_store) as Arc<dyn UserStoreDyn>,
-        session_store: Arc::new(session_store) as Arc<dyn SessionStoreDyn>,
+        user_store: Arc::new(user_store),
+        session_store: Arc::new(session_store),
         cookie_key: config.cookie_key,
         session_cookie_name: config.session_cookie_name,
         session_ttl_days: config.session_ttl_days,
@@ -53,15 +52,15 @@ where
     };
 
     let mut router = Router::new()
-        .route(&format!("{auth_path}/login"), get(login))
-        .route(&format!("{auth_path}/callback"), get(callback))
+        .route(&format!("{auth_path}/login"), get(login::<U, S>))
+        .route(&format!("{auth_path}/callback"), get(callback::<U, S>))
         .route(
             &format!("{auth_path}/logout"),
-            get(logout).post(logout),
+            get(logout::<U, S>).post(logout::<U, S>),
         );
 
     if state.dev_login_enabled {
-        router = router.route(&format!("{auth_path}/dev-login"), get(dev_login));
+        router = router.route(&format!("{auth_path}/dev-login"), get(dev_login::<U, S>));
     }
 
     router.with_state(state)
@@ -69,10 +68,10 @@ where
 
 // ── Login ──────────────────────────────────────────────────────────
 
-async fn login(
-    State(state): State<AuthState>,
+async fn login<U: UserStore, S: SessionStore>(
+    State(state): State<AuthState<U, S>>,
     jar: PrivateCookieJar,
-) -> Result<(PrivateCookieJar, Redirect), AuthError> {
+) -> Result<(PrivateCookieJar, Redirect), Response> {
     let auth_req = state.client.authorization_url();
 
     let (pkce_cookie, state_cookie) = cookies::pkce_cookies(
@@ -97,8 +96,8 @@ struct CallbackParams {
     error_description: Option<String>,
 }
 
-async fn callback(
-    State(state): State<AuthState>,
+async fn callback<U: UserStore, S: SessionStore>(
+    State(state): State<AuthState<U, S>>,
     jar: PrivateCookieJar,
     Query(params): Query<CallbackParams>,
     headers: HeaderMap,
@@ -142,7 +141,7 @@ async fn callback(
             login_error("token_exchange_failed")
         })?;
 
-    // Fetch user info
+    // Fetch user info (ppnum validated by Ppnum newtype during deserialization)
     let user_info = state
         .client
         .get_user_info(&token_response.access_token)
@@ -152,20 +151,12 @@ async fn callback(
             login_error("userinfo_failed")
         })?;
 
-    // Validate ppnum format if present
-    if let Some(ref ppnum) = user_info.ppnum {
-        if !crate::ppnum::is_valid_ppnum(ppnum) {
-            tracing::warn!(ppnum = %ppnum, "Invalid ppnum format from PAS");
-            return Err(login_error("account_setup_required"));
-        }
-    }
-
-    let ppnum_id = user_info.sub.clone();
+    let ppnum_id = user_info.sub;
 
     // Find or create user (consumer business logic)
     let user_id = state
         .user_store
-        .find_or_create_dyn(&ppnum_id, &user_info)
+        .find_or_create(&ppnum_id, &user_info)
         .await
         .map_err(|e| {
             tracing::error!(error = %e, "User find_or_create failed");
@@ -190,7 +181,7 @@ async fn callback(
 
     let session_id = state
         .session_store
-        .create_dyn(session)
+        .create(session)
         .await
         .map_err(|e| {
             tracing::error!(error = %e, "Session creation failed");
@@ -200,7 +191,7 @@ async fn callback(
     // Set session cookie + clear PKCE cookies
     let session_cookie = cookies::session_cookie(
         &state.session_cookie_name,
-        &session_id,
+        &session_id.to_string(),
         state.session_ttl_days,
         state.secure_cookies,
     );
@@ -219,14 +210,14 @@ async fn callback(
 
 // ── Logout ─────────────────────────────────────────────────────────
 
-async fn logout(
-    State(state): State<AuthState>,
+async fn logout<U: UserStore, S: SessionStore>(
+    State(state): State<AuthState<U, S>>,
     jar: PrivateCookieJar,
 ) -> (PrivateCookieJar, Redirect) {
     // Delete session if exists
     if let Some(cookie) = jar.get(&state.session_cookie_name) {
-        let session_id = cookie.value().to_string();
-        if let Err(e) = state.session_store.delete_dyn(&session_id).await {
+        let session_id = crate::types::SessionId(cookie.value().to_string());
+        if let Err(e) = state.session_store.delete(&session_id).await {
             tracing::warn!(error = %e, "Session deletion failed during logout");
         }
     }
@@ -242,8 +233,8 @@ struct DevLoginParams {
     ppnum: Option<String>,
 }
 
-async fn dev_login(
-    State(state): State<AuthState>,
+async fn dev_login<U: UserStore, S: SessionStore>(
+    State(state): State<AuthState<U, S>>,
     jar: PrivateCookieJar,
     Query(params): Query<DevLoginParams>,
     headers: HeaderMap,
@@ -254,18 +245,21 @@ async fn dev_login(
 
     let test_ppnum = params
         .ppnum
-        .filter(|p| crate::ppnum::is_valid_ppnum(p))
+        .filter(|p| p.parse::<crate::types::Ppnum>().is_ok())
         .unwrap_or_else(|| "77700000001".to_string());
 
     // Generate a deterministic ULID-formatted ppnum_id for dev.
     // ULID = 26 chars of Crockford Base32 [0-9A-HJKMNP-TV-Z].
     // Digits 0-9 are valid, so zero-pad the 11-digit ppnum to 26 chars.
-    let test_ppnum_id = format!("{:0>26}", test_ppnum);
+    let test_ppnum_id: PpnumId = format!("{test_ppnum:0>26}")
+        .parse()
+        .expect("zero-padded digits are valid Crockford Base32");
+
     let test_email = format!("{test_ppnum}@dev.local");
 
     // UserInfo is #[non_exhaustive] — construct via serde deserialization
     let user_info: crate::oauth::UserInfo = serde_json::from_value(serde_json::json!({
-        "sub": test_ppnum_id,
+        "sub": test_ppnum_id.to_string(),
         "email": test_email,
         "ppnum": test_ppnum,
         "email_verified": true,
@@ -275,7 +269,7 @@ async fn dev_login(
     // Find or create dev user
     let user_id = state
         .user_store
-        .find_or_create_dyn(&test_ppnum_id, &user_info)
+        .find_or_create(&test_ppnum_id, &user_info)
         .await
         .map_err(|e| {
             tracing::error!(error = %e, "Dev user creation failed");
@@ -298,7 +292,7 @@ async fn dev_login(
 
     let session_id = state
         .session_store
-        .create_dyn(session)
+        .create(session)
         .await
         .map_err(|e| {
             tracing::error!(error = %e, "Dev session creation failed");
@@ -307,7 +301,7 @@ async fn dev_login(
 
     let session_cookie = cookies::session_cookie(
         &state.session_cookie_name,
-        &session_id,
+        &session_id.to_string(),
         state.session_ttl_days,
         state.secure_cookies,
     );

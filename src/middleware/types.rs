@@ -1,4 +1,5 @@
 use crate::oauth::UserInfo;
+use crate::types::{PpnumId, UserId};
 
 /// Session data from a successful PAS authentication.
 ///
@@ -12,9 +13,9 @@ use crate::oauth::UserInfo;
 #[derive(Debug, Clone)]
 pub struct NewSession {
     /// PAS user identifier (OAuth `sub` claim, ULID format).
-    pub ppnum_id: String,
+    pub ppnum_id: PpnumId,
     /// User ID returned by [`UserStore::find_or_create`](super::UserStore::find_or_create).
-    pub user_id: String,
+    pub user_id: UserId,
     /// PAS refresh token (for token renewal via RTR).
     pub refresh_token: Option<String>,
     /// Client `User-Agent` header value.

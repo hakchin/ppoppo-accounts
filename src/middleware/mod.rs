@@ -31,7 +31,7 @@ mod state;
 mod traits;
 mod types;
 
-pub use config::{PasAuthConfig, PasAuthConfigBuilder};
+pub use config::PasAuthConfig;
 pub use error::AuthError;
 pub use extractor::AuthUser;
 pub use routes::auth_routes;

@@ -3,16 +3,17 @@ use std::sync::Arc;
 use axum::extract::FromRef;
 use axum_extra::extract::cookie::Key;
 
-use super::extractor::SessionStoreDyn;
+use super::traits::{SessionStore, UserStore};
 use crate::oauth::AuthClient;
-use crate::oauth::UserInfo;
 
 /// Shared state for auth route handlers.
-#[derive(Clone)]
-pub(super) struct AuthState {
+///
+/// Generic over `U` (UserStore) and `S` (SessionStore) for compile-time
+/// monomorphic dispatch — no `dyn` trait objects or `Pin<Box<dyn Future>>`.
+pub(super) struct AuthState<U, S> {
     pub(super) client: Arc<AuthClient>,
-    pub(super) user_store: Arc<dyn UserStoreDyn>,
-    pub(super) session_store: Arc<dyn SessionStoreDyn>,
+    pub(super) user_store: Arc<U>,
+    pub(super) session_store: Arc<S>,
     pub(super) cookie_key: Key,
     pub(super) session_cookie_name: String,
     pub(super) session_ttl_days: i64,
@@ -23,42 +24,29 @@ pub(super) struct AuthState {
     pub(super) dev_login_enabled: bool,
 }
 
-// PrivateCookieJar requires Key to be extractable from state
-impl FromRef<AuthState> for Key {
-    fn from_ref(state: &AuthState) -> Self {
-        state.cookie_key.clone()
+// Manual Clone: avoid derive adding `U: Clone, S: Clone` bounds.
+// Arc<T> is Clone regardless of T.
+impl<U, S> Clone for AuthState<U, S> {
+    fn clone(&self) -> Self {
+        Self {
+            client: self.client.clone(),
+            user_store: self.user_store.clone(),
+            session_store: self.session_store.clone(),
+            cookie_key: self.cookie_key.clone(),
+            session_cookie_name: self.session_cookie_name.clone(),
+            session_ttl_days: self.session_ttl_days,
+            secure_cookies: self.secure_cookies,
+            auth_path: self.auth_path.clone(),
+            login_redirect: self.login_redirect.clone(),
+            logout_redirect: self.logout_redirect.clone(),
+            dev_login_enabled: self.dev_login_enabled,
+        }
     }
 }
 
-/// Object-safe wrapper for UserStore.
-pub(super) trait UserStoreDyn: Send + Sync {
-    fn find_or_create_dyn<'a>(
-        &'a self,
-        ppnum_id: &'a str,
-        user_info: &'a UserInfo,
-    ) -> std::pin::Pin<
-        Box<
-            dyn std::future::Future<
-                    Output = Result<String, Box<dyn std::error::Error + Send + Sync>>,
-                > + Send
-                + 'a,
-        >,
-    >;
-}
-
-impl<T: super::traits::UserStore> UserStoreDyn for T {
-    fn find_or_create_dyn<'a>(
-        &'a self,
-        ppnum_id: &'a str,
-        user_info: &'a UserInfo,
-    ) -> std::pin::Pin<
-        Box<
-            dyn std::future::Future<
-                    Output = Result<String, Box<dyn std::error::Error + Send + Sync>>,
-                > + Send
-                + 'a,
-        >,
-    > {
-        Box::pin(self.find_or_create(ppnum_id, user_info))
+// PrivateCookieJar requires Key to be extractable from state
+impl<U: UserStore, S: SessionStore> FromRef<AuthState<U, S>> for Key {
+    fn from_ref(state: &AuthState<U, S>) -> Self {
+        state.cookie_key.clone()
     }
 }

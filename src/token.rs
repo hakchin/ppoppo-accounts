@@ -8,6 +8,7 @@ use pasetors::{public, Public};
 use serde_json::Value as JsonValue;
 
 use crate::error::Error;
+use crate::types::KeyId;
 
 const TOKEN_PREFIX: &str = "v4.public.";
 
@@ -48,13 +49,34 @@ pub fn parse_public_key_hex(public_key_hex: &str) -> Result<PublicKey, Error> {
 }
 
 /// Verified claims from a PASETO token.
+///
+/// After successful verification, `iss` and `aud` are guaranteed present.
+/// Access them via typed accessors instead of raw JSON lookup.
 #[derive(Debug, Clone)]
 pub struct VerifiedClaims {
     inner: JsonValue,
 }
 
 impl VerifiedClaims {
-    /// Gets a claim value by key.
+    /// Issuer claim (guaranteed present after verification).
+    #[must_use]
+    pub fn iss(&self) -> &str {
+        self.inner["iss"].as_str().expect("iss verified at construction")
+    }
+
+    /// Audience claim (guaranteed present after verification).
+    #[must_use]
+    pub fn aud(&self) -> &str {
+        self.inner["aud"].as_str().expect("aud verified at construction")
+    }
+
+    /// Subject claim.
+    #[must_use]
+    pub fn sub(&self) -> Option<&str> {
+        self.inner.get("sub").and_then(|v| v.as_str())
+    }
+
+    /// Gets a claim value by key (for dynamic/extra claims).
     #[must_use]
     pub fn get_claim(&self, key: &str) -> Option<&JsonValue> {
         self.inner.get(key)
@@ -132,13 +154,13 @@ fn validate_claim(claims: &JsonValue, key: &str, expected: &str) -> Result<(), E
 ///
 /// Returns `Error::Token` if the token format is invalid or the footer
 /// does not contain a `kid` claim.
-pub fn extract_kid_from_token(token_str: &str) -> Result<String, Error> {
+pub fn extract_kid_from_token(token_str: &str) -> Result<KeyId, Error> {
     let footer_bytes = extract_footer_from_token(token_str)?;
     extract_kid_from_untrusted_footer(&footer_bytes)
 }
 
 /// Extracts the key ID (kid) from an untrusted token's footer.
-pub(crate) fn extract_kid_from_untrusted_footer(footer_bytes: &[u8]) -> Result<String, Error> {
+pub(crate) fn extract_kid_from_untrusted_footer(footer_bytes: &[u8]) -> Result<KeyId, Error> {
     let footer_str = std::str::from_utf8(footer_bytes)
         .map_err(|_| Error::Token("invalid footer".into()))?;
 
@@ -151,7 +173,7 @@ pub(crate) fn extract_kid_from_untrusted_footer(footer_bytes: &[u8]) -> Result<S
         .ok_or_else(|| Error::Token("missing footer claim: kid".into()))?
         .to_owned();
 
-    Ok(kid)
+    Ok(KeyId(kid))
 }
 
 /// Extracts the footer bytes from a PASETO token string.
