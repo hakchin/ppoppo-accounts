@@ -22,32 +22,32 @@ Add "Login with Ppoppo" to an Axum app:
 
 ```rust,ignore
 use ppoppo_accounts::middleware::{
-    auth_routes, AuthUser, PasAuthConfig, SessionStore, UserStore, NewSession,
+    auth_routes, AuthPpnum, PasAuthConfig, SessionStore, PpnumStore, NewSession,
 };
 
 // 1. Implement two traits for your app
-impl UserStore for MyAppState {
-    async fn find_or_create(&self, ppnum_id: &str, user_info: &UserInfo)
-        -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
-        // Find or create user, return your app's user ID
+impl PpnumStore for MyAppState {
+    async fn find_or_create(&self, ppnum_id: &PpnumId, user_info: &UserInfo)
+        -> Result<UserId, MyError> {
+        // Find or create user by ppnum_id, return your app's user ID
     }
 }
 
 impl SessionStore for MyAppState {
-    async fn create(&self, session: NewSession) -> Result<String, ...> { /* ... */ }
-    async fn find(&self, id: &str) -> Result<Option<AuthUser>, ...> { /* ... */ }
-    async fn delete(&self, id: &str) -> Result<(), ...> { /* ... */ }
+    async fn create(&self, session: NewSession) -> Result<SessionId, MyError> { /* ... */ }
+    async fn find(&self, id: &SessionId) -> Result<Option<AuthPpnum>, MyError> { /* ... */ }
+    async fn delete(&self, id: &SessionId) -> Result<(), MyError> { /* ... */ }
 }
 
 // 2. Configure and mount
 let config = PasAuthConfig::from_env()?;
 let app = Router::new()
-    .merge(auth_routes(config, user_store, session_store))
+    .merge(auth_routes(config, ppnum_store, session_store))
     .route("/dashboard", get(dashboard));
 
-// 3. Use AuthUser extractor in protected routes
-async fn dashboard(user: AuthUser) -> impl IntoResponse {
-    format!("Hello, {}", user.ppnum_id)
+// 3. Use AuthPpnum extractor in protected routes
+async fn dashboard(auth: AuthPpnum) -> impl IntoResponse {
+    format!("Hello, {}", auth.ppnum_id)
 }
 ```
 
@@ -85,25 +85,25 @@ println!("ppnum: {:?}", user.ppnum);
 |---------|---------|-------------|
 | `oauth` | Yes | `OAuth2` PKCE client (`AuthClient`, `Config`, PKCE helpers) |
 | `token` | Yes | PASETO v4.public token verification (`verify_v4_public_access_token`) |
-| `axum`  | No  | Plug-and-play Axum middleware (`auth_routes`, `AuthUser`, `PasAuthConfig`) |
+| `axum`  | No  | Plug-and-play Axum middleware (`auth_routes`, `AuthPpnum`, `PasAuthConfig`) |
 
 Use only what you need:
 
 ```toml
 # Axum middleware (recommended for Axum apps)
-ppoppo-accounts = { version = "0.2", features = ["axum"] }
+ppoppo-accounts = { version = "0.4", features = ["axum"] }
 
 # OAuth2 only (no token verification, no middleware)
-ppoppo-accounts = { version = "0.2", default-features = false, features = ["oauth"] }
+ppoppo-accounts = { version = "0.4", default-features = false, features = ["oauth"] }
 
 # Token verification only (no HTTP client)
-ppoppo-accounts = { version = "0.2", default-features = false, features = ["token"] }
+ppoppo-accounts = { version = "0.4", default-features = false, features = ["token"] }
 
 # Everything
-ppoppo-accounts = { version = "0.2", features = ["axum"] }
+ppoppo-accounts = { version = "0.4", features = ["axum"] }
 
 # ppnum validation + well-known types only (minimal)
-ppoppo-accounts = { version = "0.2", default-features = false }
+ppoppo-accounts = { version = "0.4", default-features = false }
 ```
 
 ## Known constraints
