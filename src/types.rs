@@ -4,7 +4,7 @@ use ulid::Ulid;
 
 use crate::error::Error;
 
-/// PAS user identifier (OAuth `sub` claim, ULID format).
+/// PAS ppnum identifier (OAuth `sub` claim, ULID format).
 ///
 /// Immutable, unique per Ppoppo account. Returned as `sub` in OAuth tokens.
 /// Consumers store this as the sole link to PAS identity.
@@ -63,7 +63,7 @@ impl From<Ppnum> for String {
 
 /// Consumer-defined user identifier (opaque string).
 ///
-/// Returned by [`UserStore::find_or_create`](crate::middleware::UserStore::find_or_create).
+/// Returned by [`PpnumStore::find_or_create`](crate::middleware::PpnumStore::find_or_create).
 /// The consumer chooses the format (ULID, UUID, etc.).
 #[derive(
     Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Display, From, Into,

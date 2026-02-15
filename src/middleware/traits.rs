@@ -1,19 +1,19 @@
 use std::future::Future;
 
-use super::extractor::AuthUser;
+use super::extractor::AuthPpnum;
 use super::types::NewSession;
 use crate::oauth::UserInfo;
 use crate::types::{PpnumId, SessionId, UserId};
 
-/// Consumer-provided user management.
+/// Consumer-provided ppnum account management.
 ///
-/// Called during OAuth callback to find or create the authenticated user.
-/// The returned [`UserId`] is stored in the session.
+/// Called during OAuth callback to find or create the consumer's user
+/// for the authenticated ppnum identity. The returned [`UserId`] is stored in the session.
 ///
 /// # Example
 ///
 /// ```rust,ignore
-/// impl UserStore for MyAppState {
+/// impl PpnumStore for MyAppState {
 ///     type Error = MyError;
 ///
 ///     async fn find_or_create(
@@ -27,12 +27,12 @@ use crate::types::{PpnumId, SessionId, UserId};
 ///     }
 /// }
 /// ```
-pub trait UserStore: Send + Sync + 'static {
+pub trait PpnumStore: Send + Sync + 'static {
     type Error: std::error::Error + Send + Sync + 'static;
 
-    /// Find existing user or create a new one by PAS ppnum_id.
+    /// Find existing consumer user or create a new one by PAS ppnum_id.
     ///
-    /// - `ppnum_id`: PAS user identifier (OAuth `sub` claim, ULID format)
+    /// - `ppnum_id`: PAS ppnum identifier (OAuth `sub` claim, ULID format)
     /// - `user_info`: PAS UserInfo (transient — for display/logging, not DB storage)
     fn find_or_create(
         &self,
@@ -58,7 +58,7 @@ pub trait UserStore: Send + Sync + 'static {
 ///         Ok(SessionId(id))
 ///     }
 ///
-///     async fn find(&self, session_id: &SessionId) -> Result<Option<AuthUser>, MyError> {
+///     async fn find(&self, session_id: &SessionId) -> Result<Option<AuthPpnum>, MyError> {
 ///         self.db.find_session(session_id).await
 ///     }
 ///
@@ -76,11 +76,11 @@ pub trait SessionStore: Send + Sync + 'static {
         session: NewSession,
     ) -> impl Future<Output = Result<SessionId, Self::Error>> + Send;
 
-    /// Look up a session by ID. Returns `AuthUser` if session is valid.
+    /// Look up a session by ID. Returns `AuthPpnum` if session is valid.
     fn find(
         &self,
         session_id: &SessionId,
-    ) -> impl Future<Output = Result<Option<AuthUser>, Self::Error>> + Send;
+    ) -> impl Future<Output = Result<Option<AuthPpnum>, Self::Error>> + Send;
 
     /// Delete a session (logout).
     fn delete(

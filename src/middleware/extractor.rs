@@ -5,10 +5,10 @@ use axum_extra::extract::cookie::Key;
 
 use super::error::AuthError;
 use super::state::AuthState;
-use super::traits::{SessionStore, UserStore};
+use super::traits::{PpnumStore, SessionStore};
 use crate::types::{PpnumId, SessionId, UserId};
 
-/// Authenticated user extracted from session cookie.
+/// Authenticated ppnum identity extracted from session cookie.
 ///
 /// Use as an Axum extractor in route handlers. Returns `401 Unauthorized`
 /// if no valid session exists.
@@ -16,20 +16,20 @@ use crate::types::{PpnumId, SessionId, UserId};
 /// # Example
 ///
 /// ```rust,ignore
-/// async fn protected(user: AuthUser) -> impl IntoResponse {
-///     format!("Hello, user {} (ppnum_id: {})", user.user_id, user.ppnum_id)
+/// async fn protected(auth: AuthPpnum) -> impl IntoResponse {
+///     format!("Hello, ppnum_id: {}, user_id: {}", auth.ppnum_id, auth.user_id)
 /// }
 ///
 /// // Optional: accessible to both authenticated and anonymous users
-/// async fn public(user: Option<AuthUser>) -> impl IntoResponse {
-///     match user {
-///         Some(u) => format!("Hello, {}", u.user_id),
+/// async fn public(auth: Option<AuthPpnum>) -> impl IntoResponse {
+///     match auth {
+///         Some(a) => format!("Hello, {}", a.user_id),
 ///         None => "Hello, guest".to_string(),
 ///     }
 /// }
 /// ```
 #[derive(Debug, Clone)]
-pub struct AuthUser {
+pub struct AuthPpnum {
     /// Session ID (from cookie).
     pub session_id: SessionId,
     /// App-specific user ID (from `SessionStore::find`).
@@ -38,7 +38,7 @@ pub struct AuthUser {
     pub ppnum_id: PpnumId,
 }
 
-impl<U: UserStore, S: SessionStore> FromRequestParts<AuthState<U, S>> for AuthUser {
+impl<U: PpnumStore, S: SessionStore> FromRequestParts<AuthState<U, S>> for AuthPpnum {
     type Rejection = AuthError;
 
     async fn from_request_parts(

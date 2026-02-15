@@ -11,7 +11,7 @@ use serde::Deserialize;
 use super::config::PasAuthConfig;
 use super::cookies;
 use super::state::AuthState;
-use super::traits::{SessionStore, UserStore};
+use super::traits::{PpnumStore, SessionStore};
 use super::types::NewSession;
 use crate::types::PpnumId;
 
@@ -28,18 +28,18 @@ use crate::types::PpnumId;
 /// ```rust,ignore
 /// let config = PasAuthConfig::from_env()?;
 /// let app = Router::new()
-///     .merge(auth_routes(config, user_store, session_store));
+///     .merge(auth_routes(config, ppnum_store, session_store));
 /// ```
-pub fn auth_routes<U, S>(config: PasAuthConfig, user_store: U, session_store: S) -> Router
+pub fn auth_routes<U, S>(config: PasAuthConfig, ppnum_store: U, session_store: S) -> Router
 where
-    U: UserStore,
+    U: PpnumStore,
     S: SessionStore,
 {
     let auth_path = config.auth_path.clone();
 
     let state = AuthState {
         client: Arc::new(config.client),
-        user_store: Arc::new(user_store),
+        ppnum_store: Arc::new(ppnum_store),
         session_store: Arc::new(session_store),
         cookie_key: config.cookie_key,
         session_cookie_name: config.session_cookie_name,
@@ -68,7 +68,7 @@ where
 
 // ── Login ──────────────────────────────────────────────────────────
 
-async fn login<U: UserStore, S: SessionStore>(
+async fn login<U: PpnumStore, S: SessionStore>(
     State(state): State<AuthState<U, S>>,
     jar: PrivateCookieJar,
 ) -> Result<(PrivateCookieJar, Redirect), Response> {
@@ -96,7 +96,7 @@ struct CallbackParams {
     error_description: Option<String>,
 }
 
-async fn callback<U: UserStore, S: SessionStore>(
+async fn callback<U: PpnumStore, S: SessionStore>(
     State(state): State<AuthState<U, S>>,
     jar: PrivateCookieJar,
     Query(params): Query<CallbackParams>,
@@ -141,7 +141,7 @@ async fn callback<U: UserStore, S: SessionStore>(
             login_error("token_exchange_failed")
         })?;
 
-    // Fetch user info (ppnum validated by Ppnum newtype during deserialization)
+    // Fetch ppnum identity info (ppnum validated by Ppnum newtype during deserialization)
     let user_info = state
         .client
         .get_user_info(&token_response.access_token)
@@ -153,14 +153,14 @@ async fn callback<U: UserStore, S: SessionStore>(
 
     let ppnum_id = user_info.sub;
 
-    // Find or create user (consumer business logic)
+    // Find or create consumer user for ppnum (consumer business logic)
     let user_id = state
-        .user_store
+        .ppnum_store
         .find_or_create(&ppnum_id, &user_info)
         .await
         .map_err(|e| {
-            tracing::error!(error = %e, "User find_or_create failed");
-            login_error("user_creation_failed")
+            tracing::error!(error = %e, "Ppnum account mapping failed");
+            login_error("ppnum_mapping_failed")
         })?;
 
     // Extract client metadata
@@ -210,7 +210,7 @@ async fn callback<U: UserStore, S: SessionStore>(
 
 // ── Logout ─────────────────────────────────────────────────────────
 
-async fn logout<U: UserStore, S: SessionStore>(
+async fn logout<U: PpnumStore, S: SessionStore>(
     State(state): State<AuthState<U, S>>,
     jar: PrivateCookieJar,
 ) -> (PrivateCookieJar, Redirect) {
@@ -233,7 +233,7 @@ struct DevLoginParams {
     ppnum: Option<String>,
 }
 
-async fn dev_login<U: UserStore, S: SessionStore>(
+async fn dev_login<U: PpnumStore, S: SessionStore>(
     State(state): State<AuthState<U, S>>,
     jar: PrivateCookieJar,
     Query(params): Query<DevLoginParams>,
@@ -266,13 +266,13 @@ async fn dev_login<U: UserStore, S: SessionStore>(
     }))
     .expect("dev UserInfo construction must not fail");
 
-    // Find or create dev user
+    // Find or create dev ppnum mapping
     let user_id = state
-        .user_store
+        .ppnum_store
         .find_or_create(&test_ppnum_id, &user_info)
         .await
         .map_err(|e| {
-            tracing::error!(error = %e, "Dev user creation failed");
+            tracing::error!(error = %e, "Dev ppnum mapping failed");
             (StatusCode::INTERNAL_SERVER_ERROR, "Dev login failed").into_response()
         })?;
 

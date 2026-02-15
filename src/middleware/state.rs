@@ -3,16 +3,16 @@ use std::sync::Arc;
 use axum::extract::FromRef;
 use axum_extra::extract::cookie::Key;
 
-use super::traits::{SessionStore, UserStore};
+use super::traits::{PpnumStore, SessionStore};
 use crate::oauth::AuthClient;
 
 /// Shared state for auth route handlers.
 ///
-/// Generic over `U` (UserStore) and `S` (SessionStore) for compile-time
+/// Generic over `U` (PpnumStore) and `S` (SessionStore) for compile-time
 /// monomorphic dispatch — no `dyn` trait objects or `Pin<Box<dyn Future>>`.
 pub(super) struct AuthState<U, S> {
     pub(super) client: Arc<AuthClient>,
-    pub(super) user_store: Arc<U>,
+    pub(super) ppnum_store: Arc<U>,
     pub(super) session_store: Arc<S>,
     pub(super) cookie_key: Key,
     pub(super) session_cookie_name: String,
@@ -30,7 +30,7 @@ impl<U, S> Clone for AuthState<U, S> {
     fn clone(&self) -> Self {
         Self {
             client: self.client.clone(),
-            user_store: self.user_store.clone(),
+            ppnum_store: self.ppnum_store.clone(),
             session_store: self.session_store.clone(),
             cookie_key: self.cookie_key.clone(),
             session_cookie_name: self.session_cookie_name.clone(),
@@ -45,7 +45,7 @@ impl<U, S> Clone for AuthState<U, S> {
 }
 
 // PrivateCookieJar requires Key to be extractable from state
-impl<U: UserStore, S: SessionStore> FromRef<AuthState<U, S>> for Key {
+impl<U: PpnumStore, S: SessionStore> FromRef<AuthState<U, S>> for Key {
     fn from_ref(state: &AuthState<U, S>) -> Self {
         state.cookie_key.clone()
     }

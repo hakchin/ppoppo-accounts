@@ -12,9 +12,9 @@ use crate::types::{PpnumId, UserId};
 /// persisted in the consumer's database. Fetch via PAS userinfo API when needed.
 #[derive(Debug, Clone)]
 pub struct NewSession {
-    /// PAS user identifier (OAuth `sub` claim, ULID format).
+    /// PAS ppnum identifier (OAuth `sub` claim, ULID format).
     pub ppnum_id: PpnumId,
-    /// User ID returned by [`UserStore::find_or_create`](super::UserStore::find_or_create).
+    /// User ID returned by [`PpnumStore::find_or_create`](super::PpnumStore::find_or_create).
     pub user_id: UserId,
     /// PAS refresh token (for token renewal via RTR).
     pub refresh_token: Option<String>,
