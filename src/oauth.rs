@@ -10,16 +10,16 @@ use crate::types::{Ppnum, PpnumId};
 /// Required fields are constructor parameters — no runtime "missing field" errors.
 ///
 /// ```rust,ignore
-/// use ppoppo_accounts::Config;
+/// use ppoppo_accounts::OAuthConfig;
 ///
-/// let config = Config::new("my-client-id", "https://my-app.com/callback".parse()?);
+/// let config = OAuthConfig::new("my-client-id", "https://my-app.com/callback".parse()?);
 /// // Optional overrides via chaining:
 /// let config = config
 ///     .with_auth_url("https://custom.example.com/authorize".parse()?);
 /// ```
 #[derive(Debug, Clone)]
 #[non_exhaustive]
-pub struct Config {
+pub struct OAuthConfig {
     pub(crate) client_id: String,
     pub(crate) auth_url: Url,
     pub(crate) token_url: Url,
@@ -28,7 +28,7 @@ pub struct Config {
     pub(crate) scopes: Vec<String>,
 }
 
-impl Config {
+impl OAuthConfig {
     /// Create a new OAuth2 configuration.
     ///
     /// Required fields are parameters — compile-time enforcement, no `Result`.
@@ -117,7 +117,7 @@ impl Config {
 
 /// `OAuth2` authorization client for Ppoppo Accounts.
 pub struct AuthClient {
-    config: Config,
+    config: OAuthConfig,
     http: reqwest::Client,
 }
 
@@ -156,10 +156,45 @@ pub struct UserInfo {
     pub created_at: Option<String>,
 }
 
+impl UserInfo {
+    /// Create a new `UserInfo` with only the required `sub` field.
+    #[must_use]
+    pub fn new(sub: PpnumId) -> Self {
+        Self {
+            sub,
+            email: None,
+            ppnum: None,
+            email_verified: None,
+            created_at: None,
+        }
+    }
+
+    /// Set the email.
+    #[must_use]
+    pub fn with_email(mut self, email: impl Into<String>) -> Self {
+        self.email = Some(email.into());
+        self
+    }
+
+    /// Set the ppnum.
+    #[must_use]
+    pub fn with_ppnum(mut self, ppnum: Ppnum) -> Self {
+        self.ppnum = Some(ppnum);
+        self
+    }
+
+    /// Set the email_verified flag.
+    #[must_use]
+    pub fn with_email_verified(mut self, verified: bool) -> Self {
+        self.email_verified = Some(verified);
+        self
+    }
+}
+
 impl AuthClient {
     /// Create a new Ppoppo Accounts auth client.
     #[must_use]
-    pub fn new(config: Config) -> Self {
+    pub fn new(config: OAuthConfig) -> Self {
         Self {
             config,
             http: reqwest::Client::new(),
@@ -259,8 +294,8 @@ impl AuthClient {
 mod tests {
     use super::*;
 
-    fn test_config() -> Config {
-        Config::new(
+    fn test_config() -> OAuthConfig {
+        OAuthConfig::new(
             "test-client",
             "https://example.com/callback".parse().unwrap(),
         )
@@ -292,7 +327,7 @@ mod tests {
 
     #[test]
     fn test_config_constructor() {
-        let config = Config::new("my-app", "https://my-app.com/callback".parse().unwrap());
+        let config = OAuthConfig::new("my-app", "https://my-app.com/callback".parse().unwrap());
 
         assert_eq!(config.client_id(), "my-app");
         assert_eq!(config.redirect_uri().as_str(), "https://my-app.com/callback");
@@ -304,7 +339,7 @@ mod tests {
 
     #[test]
     fn test_config_with_overrides() {
-        let config = Config::new("my-app", "https://my-app.com/callback".parse().unwrap())
+        let config = OAuthConfig::new("my-app", "https://my-app.com/callback".parse().unwrap())
             .with_auth_url("https://custom.example.com/authorize".parse().unwrap())
             .with_scopes(vec!["openid".into()]);
 

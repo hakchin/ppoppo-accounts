@@ -6,20 +6,18 @@
 //! # Quick Start
 //!
 //! ```rust,ignore
-//! use ppoppo_accounts::middleware::{PasAuthConfig, auth_routes, AuthPpnum};
+//! use ppoppo_accounts::middleware::{PasAuthConfig, auth_routes, resolve_session};
 //!
-//! // 1. Implement PpnumStore and SessionStore traits for your app
+//! // 1. Implement AccountResolver and SessionStore traits for your app
 //! // 2. Configure from environment
 //! let config = PasAuthConfig::from_env()?;
 //!
 //! // 3. Mount auth routes
 //! let app = axum::Router::new()
-//!     .merge(auth_routes(config, ppnum_store, session_store));
+//!     .merge(auth_routes(config, account_resolver, session_store));
 //!
-//! // 4. Use AuthPpnum extractor in handlers
-//! async fn handler(auth: AuthPpnum) -> String {
-//!     format!("Hello, {}", auth.ppnum_id)
-//! }
+//! // 4. Use resolve_session() in your middleware
+//! let auth = resolve_session(&session_store, &jar, "cookie_name").await;
 //! ```
 
 mod config;
@@ -33,9 +31,9 @@ mod types;
 
 pub use config::PasAuthConfig;
 pub use error::AuthError;
-pub use extractor::AuthPpnum;
+pub use extractor::{AuthPpnum, resolve_session};
 pub use routes::auth_routes;
-pub use traits::{PpnumStore, SessionStore};
+pub use traits::{AccountResolver, SessionStore};
 pub use types::NewSession;
 
 /// Re-export cookie key type for builder API.

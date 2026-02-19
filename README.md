@@ -15,6 +15,7 @@
 - **Feature-gated modules** -- use only what you need; `oauth`, `token`, and `axum` are independent features
 - **No env-var coupling** -- the core library never reads environment variables; apps pass configuration via the builder pattern (the `axum` middleware offers an optional `from_env()` convenience)
 - **TLS via rustls** -- no OpenSSL dependency; pure-Rust TLS for the HTTP client
+- **Generic auth context** -- `SessionStore::AuthContext` lets consumers return their own auth type from `find()`, eliminating parallel auth middleware
 
 ## Quick start (Axum middleware)
 
@@ -22,32 +23,43 @@ Add "Login with Ppoppo" to an Axum app:
 
 ```rust,ignore
 use ppoppo_accounts::middleware::{
-    auth_routes, AuthPpnum, PasAuthConfig, SessionStore, PpnumStore, NewSession,
+    auth_routes, resolve_session, PasAuthConfig, SessionStore, AccountResolver, NewSession,
 };
 
 // 1. Implement two traits for your app
-impl PpnumStore for MyAppState {
-    async fn find_or_create(&self, ppnum_id: &PpnumId, user_info: &UserInfo)
+impl AccountResolver for MyAdapter {
+    async fn resolve(&self, ppnum_id: &PpnumId, user_info: &UserInfo)
         -> Result<UserId, MyError> {
         // Find or create user by ppnum_id, return your app's user ID
     }
 }
 
-impl SessionStore for MyAppState {
+impl SessionStore for MyAdapter {
+    type AuthContext = MyAuthUser; // your handler's auth type
+
     async fn create(&self, session: NewSession) -> Result<SessionId, MyError> { /* ... */ }
-    async fn find(&self, id: &SessionId) -> Result<Option<AuthPpnum>, MyError> { /* ... */ }
+    async fn find(&self, id: &SessionId) -> Result<Option<MyAuthUser>, MyError> { /* ... */ }
     async fn delete(&self, id: &SessionId) -> Result<(), MyError> { /* ... */ }
 }
 
 // 2. Configure and mount
 let config = PasAuthConfig::from_env()?;
 let app = Router::new()
-    .merge(auth_routes(config, ppnum_store, session_store))
+    .merge(auth_routes(config, account_resolver, session_store))
     .route("/dashboard", get(dashboard));
 
-// 3. Use AuthPpnum extractor in protected routes
-async fn dashboard(auth: AuthPpnum) -> impl IntoResponse {
-    format!("Hello, {}", auth.ppnum_id)
+// 3. Use resolve_session() in your middleware
+async fn auth_middleware(
+    State(state): State<MyState>,
+    jar: PrivateCookieJar,
+    mut request: Request,
+    next: Next,
+) -> Result<Response, StatusCode> {
+    let auth = resolve_session(&*state.session_store, &jar, "session_cookie")
+        .await
+        .ok_or(StatusCode::UNAUTHORIZED)?;
+    request.extensions_mut().insert(auth);
+    Ok(next.run(request).await)
 }
 ```
 
@@ -56,12 +68,9 @@ async fn dashboard(auth: AuthPpnum) -> impl IntoResponse {
 For custom OAuth2 integration without the Axum middleware:
 
 ```rust,ignore
-use ppoppo_accounts::{Config, AuthClient};
+use ppoppo_accounts::{OAuthConfig, AuthClient};
 
-let config = Config::builder()
-    .client_id("my-app")
-    .redirect_uri("https://my-app.com/callback")
-    .build()?;
+let config = OAuthConfig::new("my-app", "https://my-app.com/callback".parse()?);
 
 let client = AuthClient::new(config);
 
@@ -83,27 +92,27 @@ println!("ppnum: {:?}", user.ppnum);
 
 | Feature | Default | Description |
 |---------|---------|-------------|
-| `oauth` | Yes | `OAuth2` PKCE client (`AuthClient`, `Config`, PKCE helpers) |
+| `oauth` | Yes | `OAuth2` PKCE client (`AuthClient`, `OAuthConfig`, PKCE helpers) |
 | `token` | Yes | PASETO v4.public token verification (`verify_v4_public_access_token`) |
-| `axum`  | No  | Plug-and-play Axum middleware (`auth_routes`, `AuthPpnum`, `PasAuthConfig`) |
+| `axum`  | No  | Plug-and-play Axum middleware (`auth_routes`, `resolve_session`, `PasAuthConfig`) |
 
 Use only what you need:
 
 ```toml
 # Axum middleware (recommended for Axum apps)
-ppoppo-accounts = { version = "0.4", features = ["axum"] }
+ppoppo-accounts = { version = "0.5", features = ["axum"] }
 
 # OAuth2 only (no token verification, no middleware)
-ppoppo-accounts = { version = "0.4", default-features = false, features = ["oauth"] }
+ppoppo-accounts = { version = "0.5", default-features = false, features = ["oauth"] }
 
 # Token verification only (no HTTP client)
-ppoppo-accounts = { version = "0.4", default-features = false, features = ["token"] }
+ppoppo-accounts = { version = "0.5", default-features = false, features = ["token"] }
 
 # Everything
-ppoppo-accounts = { version = "0.4", features = ["axum"] }
+ppoppo-accounts = { version = "0.5", features = ["axum"] }
 
 # ppnum validation + well-known types only (minimal)
-ppoppo-accounts = { version = "0.4", default-features = false }
+ppoppo-accounts = { version = "0.5", default-features = false }
 ```
 
 ## Known constraints

@@ -63,7 +63,7 @@ impl From<Ppnum> for String {
 
 /// Consumer-defined user identifier (opaque string).
 ///
-/// Returned by [`PpnumStore::find_or_create`](crate::middleware::PpnumStore::find_or_create).
+/// Returned by [`AccountResolver::resolve`](crate::middleware::AccountResolver::resolve).
 /// The consumer chooses the format (ULID, UUID, etc.).
 #[derive(
     Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Display, From, Into,

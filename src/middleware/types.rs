@@ -14,7 +14,7 @@ use crate::types::{PpnumId, UserId};
 pub struct NewSession {
     /// PAS ppnum identifier (OAuth `sub` claim, ULID format).
     pub ppnum_id: PpnumId,
-    /// User ID returned by [`PpnumStore::find_or_create`](super::PpnumStore::find_or_create).
+    /// User ID returned by [`AccountResolver::resolve`](super::AccountResolver::resolve).
     pub user_id: UserId,
     /// PAS refresh token (for token renewal via RTR).
     pub refresh_token: Option<String>,

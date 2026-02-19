@@ -1,22 +1,21 @@
 use std::future::Future;
 
-use super::extractor::AuthPpnum;
 use super::types::NewSession;
 use crate::oauth::UserInfo;
 use crate::types::{PpnumId, SessionId, UserId};
 
-/// Consumer-provided ppnum account management.
+/// Consumer-provided account resolution.
 ///
-/// Called during OAuth callback to find or create the consumer's user
-/// for the authenticated ppnum identity. The returned [`UserId`] is stored in the session.
+/// Called during OAuth callback to resolve the PAS identity to a local user account.
+/// The returned [`UserId`] is stored in the session.
 ///
 /// # Example
 ///
 /// ```rust,ignore
-/// impl PpnumStore for MyAppState {
+/// impl AccountResolver for MyAdapter {
 ///     type Error = MyError;
 ///
-///     async fn find_or_create(
+///     async fn resolve(
 ///         &self,
 ///         ppnum_id: &PpnumId,
 ///         user_info: &ppoppo_accounts::UserInfo,
@@ -27,14 +26,14 @@ use crate::types::{PpnumId, SessionId, UserId};
 ///     }
 /// }
 /// ```
-pub trait PpnumStore: Send + Sync + 'static {
+pub trait AccountResolver: Send + Sync + 'static {
     type Error: std::error::Error + Send + Sync + 'static;
 
-    /// Find existing consumer user or create a new one by PAS ppnum_id.
+    /// Resolve a PAS identity to a consumer user account (find or create).
     ///
     /// - `ppnum_id`: PAS ppnum identifier (OAuth `sub` claim, ULID format)
     /// - `user_info`: PAS UserInfo (transient — for display/logging, not DB storage)
-    fn find_or_create(
+    fn resolve(
         &self,
         ppnum_id: &PpnumId,
         user_info: &UserInfo,
@@ -46,11 +45,15 @@ pub trait PpnumStore: Send + Sync + 'static {
 /// Sessions are identified by [`SessionId`] (opaque string wrapper).
 /// The consumer chooses the ID format (ULID, UUID, etc.).
 ///
+/// The `AuthContext` associated type lets consumers return their own auth type
+/// from `find()`, eliminating the need for parallel auth middleware.
+///
 /// # Example
 ///
 /// ```rust,ignore
-/// impl SessionStore for MyAppState {
+/// impl SessionStore for MyAdapter {
 ///     type Error = MyError;
+///     type AuthContext = MyAuthUser; // your handler's auth type
 ///
 ///     async fn create(&self, session: NewSession) -> Result<SessionId, MyError> {
 ///         let id = Ulid::new().to_string();
@@ -58,8 +61,9 @@ pub trait PpnumStore: Send + Sync + 'static {
 ///         Ok(SessionId(id))
 ///     }
 ///
-///     async fn find(&self, session_id: &SessionId) -> Result<Option<AuthPpnum>, MyError> {
-///         self.db.find_session(session_id).await
+///     async fn find(&self, session_id: &SessionId) -> Result<Option<MyAuthUser>, MyError> {
+///         // Return your full auth context directly
+///         self.db.find_session_with_context(session_id).await
 ///     }
 ///
 ///     async fn delete(&self, session_id: &SessionId) -> Result<(), MyError> {
@@ -69,6 +73,7 @@ pub trait PpnumStore: Send + Sync + 'static {
 /// ```
 pub trait SessionStore: Send + Sync + 'static {
     type Error: std::error::Error + Send + Sync + 'static;
+    type AuthContext: Clone + Send + Sync + 'static;
 
     /// Create a new session. Returns the session ID.
     fn create(
@@ -76,11 +81,11 @@ pub trait SessionStore: Send + Sync + 'static {
         session: NewSession,
     ) -> impl Future<Output = Result<SessionId, Self::Error>> + Send;
 
-    /// Look up a session by ID. Returns `AuthPpnum` if session is valid.
+    /// Look up a session by ID. Returns the consumer's auth context if valid.
     fn find(
         &self,
         session_id: &SessionId,
-    ) -> impl Future<Output = Result<Option<AuthPpnum>, Self::Error>> + Send;
+    ) -> impl Future<Output = Result<Option<Self::AuthContext>, Self::Error>> + Send;
 
     /// Delete a session (logout).
     fn delete(

@@ -16,7 +16,7 @@ pub mod middleware;
 // Re-exports for convenient access
 pub use error::Error;
 #[cfg(feature = "oauth")]
-pub use oauth::{AuthClient, AuthorizationRequest, Config, TokenResponse, UserInfo};
+pub use oauth::{AuthClient, AuthorizationRequest, OAuthConfig, TokenResponse, UserInfo};
 #[cfg(feature = "oauth")]
 pub use url::Url;
 #[cfg(feature = "oauth")]

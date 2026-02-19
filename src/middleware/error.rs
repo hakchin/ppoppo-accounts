@@ -1,5 +1,5 @@
 use axum::http::StatusCode;
-use axum::response::{IntoResponse, Redirect, Response};
+use axum::response::{IntoResponse, Response};
 
 /// Authentication errors for the middleware layer.
 #[derive(Debug, thiserror::Error)]
@@ -31,9 +31,8 @@ impl IntoResponse for AuthError {
             Self::Unauthenticated | Self::SessionExpired => {
                 (StatusCode::UNAUTHORIZED, self.to_string()).into_response()
             }
-            Self::OAuth(ref msg) => {
-                let encoded = urlencoding::encode(msg);
-                Redirect::to(&format!("/login?error={encoded}")).into_response()
+            Self::OAuth(_) => {
+                (StatusCode::BAD_REQUEST, self.to_string()).into_response()
             }
             Self::Store(_) | Self::Config(_) => {
                 tracing::error!(error = %self, "Auth internal error");

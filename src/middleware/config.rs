@@ -2,7 +2,7 @@ use axum_extra::extract::cookie::Key;
 use url::Url;
 
 use super::error::AuthError;
-use crate::oauth::{AuthClient, Config as PasConfig};
+use crate::oauth::{AuthClient, OAuthConfig};
 
 /// PAS authentication configuration.
 ///
@@ -27,6 +27,8 @@ pub struct PasAuthConfig {
     pub(super) login_redirect: String,
     /// Redirect destination after logout.
     pub(super) logout_redirect: String,
+    /// Error redirect path for OAuth failures.
+    pub(super) error_redirect: String,
     /// Enable `/dev-login` route.
     pub(super) dev_login_enabled: bool,
 }
@@ -46,6 +48,7 @@ impl PasAuthConfig {
             auth_path: "/api/auth".into(),
             login_redirect: "/".into(),
             logout_redirect: "/".into(),
+            error_redirect: "/login".into(),
             dev_login_enabled: false,
         }
     }
@@ -76,7 +79,7 @@ impl PasAuthConfig {
             .parse()
             .map_err(|e| AuthError::Config(format!("PAS_REDIRECT_URI: {e}")))?;
 
-        let mut config = PasConfig::new(client_id, redirect_uri);
+        let mut config = OAuthConfig::new(client_id, redirect_uri);
 
         if let Ok(url_str) = std::env::var("PAS_AUTH_URL") {
             let url: Url = url_str
@@ -166,6 +169,13 @@ impl PasAuthConfig {
     #[must_use]
     pub fn with_logout_redirect(mut self, path: impl Into<String>) -> Self {
         self.logout_redirect = path.into();
+        self
+    }
+
+    /// Set the error redirect path for OAuth failures (default: `"/login"`).
+    #[must_use]
+    pub fn with_error_redirect(mut self, path: impl Into<String>) -> Self {
+        self.error_redirect = path.into();
         self
     }
 
