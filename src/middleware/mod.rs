@@ -17,7 +17,7 @@
 //!     .merge(auth_routes(config, account_resolver, session_store));
 //!
 //! // 4. Use resolve_session() in your middleware
-//! let auth = resolve_session(&session_store, &jar, "cookie_name").await;
+//! let auth = resolve_session(&session_store, &jar, "cookie_name").await?;
 //! ```
 
 mod config;

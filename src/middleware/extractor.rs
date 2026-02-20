@@ -1,3 +1,5 @@
+use axum::extract::FromRequestParts;
+use axum::http::StatusCode;
 use axum_extra::extract::PrivateCookieJar;
 
 use super::traits::SessionStore;
@@ -10,6 +12,8 @@ use crate::types::{PpnumId, SessionId, UserId};
 ///
 /// For consumers that need more context, implement `SessionStore::AuthContext`
 /// with your own type and use [`resolve_session()`] in custom middleware.
+///
+/// Can be used as an Axum extractor when inserted into request extensions.
 #[derive(Debug, Clone)]
 pub struct AuthPpnum {
     /// Session ID (from cookie).
@@ -20,13 +24,31 @@ pub struct AuthPpnum {
     pub ppnum_id: PpnumId,
 }
 
+impl<S: Send + Sync> FromRequestParts<S> for AuthPpnum {
+    type Rejection = StatusCode;
+
+    async fn from_request_parts(
+        parts: &mut axum::http::request::Parts,
+        _state: &S,
+    ) -> Result<Self, Self::Rejection> {
+        parts
+            .extensions
+            .get::<AuthPpnum>()
+            .cloned()
+            .ok_or(StatusCode::UNAUTHORIZED)
+    }
+}
+
 /// Resolve the authenticated user from a session cookie.
 ///
 /// Reads the encrypted session cookie, looks up the session via
 /// [`SessionStore::find()`], and returns the consumer's auth context type.
 ///
 /// Use this in custom Axum middleware to inject auth context into request
-/// extensions. Returns `None` if the cookie is missing or the session is invalid.
+/// extensions.
+///
+/// Returns `Ok(None)` if the cookie is missing.
+/// Returns `Err` if the session store operation fails (e.g., DB error).
 ///
 /// # Example
 ///
@@ -43,6 +65,10 @@ pub struct AuthPpnum {
 ///         "session_cookie_name",
 ///     )
 ///     .await
+///     .map_err(|e| {
+///         tracing::error!(error = %e, "Session lookup failed");
+///         StatusCode::INTERNAL_SERVER_ERROR
+///     })?
 ///     .ok_or(StatusCode::UNAUTHORIZED)?;
 ///
 ///     request.extensions_mut().insert(auth);
@@ -53,9 +79,10 @@ pub async fn resolve_session<S: SessionStore>(
     session_store: &S,
     jar: &PrivateCookieJar,
     cookie_name: &str,
-) -> Option<S::AuthContext> {
-    let session_id = jar
-        .get(cookie_name)
-        .map(|c| SessionId(c.value().to_string()))?;
-    session_store.find(&session_id).await.ok()?
+) -> Result<Option<S::AuthContext>, S::Error> {
+    let session_id = match jar.get(cookie_name) {
+        Some(c) => SessionId(c.value().to_string()),
+        None => return Ok(None),
+    };
+    session_store.find(&session_id).await
 }
