@@ -4,6 +4,36 @@ use url::Url;
 use super::error::AuthError;
 use crate::oauth::{AuthClient, OAuthConfig};
 
+/// Shared auth settings used by both config and runtime state.
+#[derive(Clone)]
+pub(crate) struct AuthSettings {
+    pub(crate) cookie_key: Key,
+    pub(crate) session_cookie_name: String,
+    pub(crate) session_ttl_days: i64,
+    pub(crate) secure_cookies: bool,
+    pub(crate) auth_path: String,
+    pub(crate) login_redirect: String,
+    pub(crate) logout_redirect: String,
+    pub(crate) error_redirect: String,
+    pub(crate) dev_login_enabled: bool,
+}
+
+impl AuthSettings {
+    fn defaults() -> Self {
+        Self {
+            cookie_key: Key::generate(),
+            session_cookie_name: "__ppoppo_session".into(),
+            session_ttl_days: 30,
+            secure_cookies: true,
+            auth_path: "/api/auth".into(),
+            login_redirect: "/".into(),
+            logout_redirect: "/".into(),
+            error_redirect: "/login".into(),
+            dev_login_enabled: false,
+        }
+    }
+}
+
 /// PAS authentication configuration.
 ///
 /// Required field (`client`) is a constructor parameter — no runtime "missing field" errors.
@@ -11,26 +41,8 @@ use crate::oauth::{AuthClient, OAuthConfig};
 /// Use [`from_env()`](PasAuthConfig::from_env) for convention-based setup,
 /// or [`new()`](PasAuthConfig::new) with `with_*` methods for full control.
 pub struct PasAuthConfig {
-    /// ppoppo-accounts OAuth2 client.
     pub(super) client: AuthClient,
-    /// Cookie encryption key (for PrivateCookieJar).
-    pub(super) cookie_key: Key,
-    /// Session cookie name.
-    pub(super) session_cookie_name: String,
-    /// Session cookie TTL in days.
-    pub(super) session_ttl_days: i64,
-    /// Use secure cookies (HTTPS only).
-    pub(super) secure_cookies: bool,
-    /// Auth routes base path.
-    pub(super) auth_path: String,
-    /// Redirect destination after successful login.
-    pub(super) login_redirect: String,
-    /// Redirect destination after logout.
-    pub(super) logout_redirect: String,
-    /// Error redirect path for OAuth failures.
-    pub(super) error_redirect: String,
-    /// Enable `/dev-login` route.
-    pub(super) dev_login_enabled: bool,
+    pub(super) settings: AuthSettings,
 }
 
 impl PasAuthConfig {
@@ -41,15 +53,7 @@ impl PasAuthConfig {
     pub fn new(client: AuthClient) -> Self {
         Self {
             client,
-            cookie_key: Key::generate(),
-            session_cookie_name: "__ppoppo_session".into(),
-            session_ttl_days: 30,
-            secure_cookies: true,
-            auth_path: "/api/auth".into(),
-            login_redirect: "/".into(),
-            logout_redirect: "/".into(),
-            error_redirect: "/login".into(),
-            dev_login_enabled: false,
+            settings: AuthSettings::defaults(),
         }
     }
 
@@ -123,66 +127,57 @@ impl PasAuthConfig {
             .with_dev_login_enabled(dev_auth))
     }
 
-    /// Set the cookie encryption key. If not set, a random key is generated.
     #[must_use]
     pub fn with_cookie_key(mut self, key: Key) -> Self {
-        self.cookie_key = key;
+        self.settings.cookie_key = key;
         self
     }
 
-    /// Set the session cookie name (default: `"__ppoppo_session"`).
     #[must_use]
     pub fn with_session_cookie_name(mut self, name: impl Into<String>) -> Self {
-        self.session_cookie_name = name.into();
+        self.settings.session_cookie_name = name.into();
         self
     }
 
-    /// Set the session cookie TTL in days (default: 30).
     #[must_use]
     pub fn with_session_ttl_days(mut self, days: i64) -> Self {
-        self.session_ttl_days = days;
+        self.settings.session_ttl_days = days;
         self
     }
 
-    /// Set whether to use secure cookies (default: true).
     #[must_use]
     pub fn with_secure_cookies(mut self, secure: bool) -> Self {
-        self.secure_cookies = secure;
+        self.settings.secure_cookies = secure;
         self
     }
 
-    /// Set the auth routes base path (default: `"/api/auth"`).
     #[must_use]
     pub fn with_auth_path(mut self, path: impl Into<String>) -> Self {
-        self.auth_path = path.into();
+        self.settings.auth_path = path.into();
         self
     }
 
-    /// Set the post-login redirect path (default: `"/"`).
     #[must_use]
     pub fn with_login_redirect(mut self, path: impl Into<String>) -> Self {
-        self.login_redirect = path.into();
+        self.settings.login_redirect = path.into();
         self
     }
 
-    /// Set the post-logout redirect path (default: `"/"`).
     #[must_use]
     pub fn with_logout_redirect(mut self, path: impl Into<String>) -> Self {
-        self.logout_redirect = path.into();
+        self.settings.logout_redirect = path.into();
         self
     }
 
-    /// Set the error redirect path for OAuth failures (default: `"/login"`).
     #[must_use]
     pub fn with_error_redirect(mut self, path: impl Into<String>) -> Self {
-        self.error_redirect = path.into();
+        self.settings.error_redirect = path.into();
         self
     }
 
-    /// Enable the dev-login route (default: false).
     #[must_use]
     pub fn with_dev_login_enabled(mut self, enabled: bool) -> Self {
-        self.dev_login_enabled = enabled;
+        self.settings.dev_login_enabled = enabled;
         self
     }
 }

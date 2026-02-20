@@ -16,40 +16,18 @@ use super::types::NewSession;
 use crate::types::PpnumId;
 
 /// Create the PAS authentication router.
-///
-/// Mounts the following routes under `config.auth_path` (default: `/api/auth`):
-/// - `GET /login` — Redirect to PAS with PKCE
-/// - `GET /callback` — Handle PAS OAuth2 callback
-/// - `GET|POST /logout` — Destroy session and clear cookie
-/// - `GET /dev-login` — Dev-only test login (if enabled)
-///
-/// # Example
-///
-/// ```rust,ignore
-/// let config = PasAuthConfig::from_env()?;
-/// let app = Router::new()
-///     .merge(auth_routes(config, account_resolver, session_store));
-/// ```
 pub fn auth_routes<U, S>(config: PasAuthConfig, account_resolver: U, session_store: S) -> Router
 where
     U: AccountResolver,
     S: SessionStore,
 {
-    let auth_path = config.auth_path.clone();
+    let auth_path = config.settings.auth_path.clone();
 
     let state = AuthState {
         client: Arc::new(config.client),
         account_resolver: Arc::new(account_resolver),
         session_store: Arc::new(session_store),
-        cookie_key: config.cookie_key,
-        session_cookie_name: config.session_cookie_name,
-        session_ttl_days: config.session_ttl_days,
-        secure_cookies: config.secure_cookies,
-        auth_path: config.auth_path,
-        login_redirect: config.login_redirect,
-        logout_redirect: config.logout_redirect,
-        error_redirect: config.error_redirect,
-        dev_login_enabled: config.dev_login_enabled,
+        settings: config.settings,
     };
 
     let mut router = Router::new()
@@ -60,7 +38,7 @@ where
             get(logout::<U, S>).post(logout::<U, S>),
         );
 
-    if state.dev_login_enabled {
+    if state.settings.dev_login_enabled {
         router = router.route(&format!("{auth_path}/dev-login"), get(dev_login::<U, S>));
     }
 
@@ -78,8 +56,8 @@ async fn login<U: AccountResolver, S: SessionStore>(
     let (pkce_cookie, state_cookie) = cookies::pkce_cookies(
         &auth_req.code_verifier,
         &auth_req.state,
-        state.secure_cookies,
-        &state.auth_path,
+        state.settings.secure_cookies,
+        &state.settings.auth_path,
     );
 
     let jar = jar.add(pkce_cookie).add(state_cookie);
@@ -103,68 +81,60 @@ async fn callback<U: AccountResolver, S: SessionStore>(
     Query(params): Query<CallbackParams>,
     headers: HeaderMap,
 ) -> Result<(PrivateCookieJar, Redirect), Response> {
-    // Handle OAuth error response
     if let Some(error) = &params.error {
         let desc = params.error_description.as_deref().unwrap_or("Unknown error");
         tracing::warn!(error = %error, description = %desc, "OAuth2 error from PAS");
-        return Err(login_error(&state.error_redirect, desc));
+        return Err(login_error(&state.settings.error_redirect, desc));
     }
 
-    // Extract authorization code
     let code = params
         .code
-        .ok_or_else(|| login_error(&state.error_redirect, "missing_code"))?;
+        .ok_or_else(|| login_error(&state.settings.error_redirect, "missing_code"))?;
 
-    // Validate CSRF state
     let received_state = params
         .state
-        .ok_or_else(|| login_error(&state.error_redirect, "state_mismatch"))?;
+        .ok_or_else(|| login_error(&state.settings.error_redirect, "state_mismatch"))?;
 
     let stored_state = cookies::get_state(&jar)
-        .ok_or_else(|| login_error(&state.error_redirect, "state_mismatch"))?;
+        .ok_or_else(|| login_error(&state.settings.error_redirect, "state_mismatch"))?;
 
     if received_state != stored_state {
         tracing::warn!("OAuth state mismatch");
-        return Err(login_error(&state.error_redirect, "state_mismatch"));
+        return Err(login_error(&state.settings.error_redirect, "state_mismatch"));
     }
 
-    // Retrieve PKCE verifier
     let code_verifier = cookies::get_pkce_verifier(&jar)
-        .ok_or_else(|| login_error(&state.error_redirect, "missing_verifier"))?;
+        .ok_or_else(|| login_error(&state.settings.error_redirect, "missing_verifier"))?;
 
-    // Exchange code for tokens
     let token_response = state
         .client
         .exchange_code(&code, &code_verifier)
         .await
         .map_err(|e| {
             tracing::error!(error = %e, "Token exchange failed");
-            login_error(&state.error_redirect, "token_exchange_failed")
+            login_error(&state.settings.error_redirect, "token_exchange_failed")
         })?;
 
-    // Fetch ppnum identity info (ppnum validated by Ppnum newtype during deserialization)
     let user_info = state
         .client
         .get_user_info(&token_response.access_token)
         .await
         .map_err(|e| {
             tracing::error!(error = %e, "Userinfo request failed");
-            login_error(&state.error_redirect, "userinfo_failed")
+            login_error(&state.settings.error_redirect, "userinfo_failed")
         })?;
 
     let ppnum_id = user_info.sub;
 
-    // Resolve consumer user for ppnum (consumer business logic)
     let user_id = state
         .account_resolver
         .resolve(&ppnum_id, &user_info)
         .await
         .map_err(|e| {
             tracing::error!(error = %e, "Account resolution failed");
-            login_error(&state.error_redirect, "account_resolution_failed")
+            login_error(&state.settings.error_redirect, "account_resolution_failed")
         })?;
 
-    // Create session (consumer persistence)
     let session = NewSession {
         ppnum_id,
         user_id,
@@ -180,18 +150,17 @@ async fn callback<U: AccountResolver, S: SessionStore>(
         .await
         .map_err(|e| {
             tracing::error!(error = %e, "Session creation failed");
-            login_error(&state.error_redirect, "session_failed")
+            login_error(&state.settings.error_redirect, "session_failed")
         })?;
 
-    // Set session cookie + clear PKCE cookies
     let session_cookie = cookies::session_cookie(
-        &state.session_cookie_name,
+        &state.settings.session_cookie_name,
         &session_id.to_string(),
-        state.session_ttl_days,
-        state.secure_cookies,
+        state.settings.session_ttl_days,
+        state.settings.secure_cookies,
     );
 
-    let (clear_pkce, clear_state) = cookies::clear_pkce_cookies(&state.auth_path);
+    let (clear_pkce, clear_state) = cookies::clear_pkce_cookies(&state.settings.auth_path);
 
     let jar = jar
         .add(session_cookie)
@@ -200,7 +169,7 @@ async fn callback<U: AccountResolver, S: SessionStore>(
 
     tracing::info!(session_id = %session_id, "PAS OAuth2 login successful");
 
-    Ok((jar, Redirect::to(&state.login_redirect)))
+    Ok((jar, Redirect::to(&state.settings.login_redirect)))
 }
 
 // ── Logout ─────────────────────────────────────────────────────────
@@ -209,16 +178,15 @@ async fn logout<U: AccountResolver, S: SessionStore>(
     State(state): State<AuthState<U, S>>,
     jar: PrivateCookieJar,
 ) -> (PrivateCookieJar, Redirect) {
-    // Delete session if exists
-    if let Some(cookie) = jar.get(&state.session_cookie_name) {
+    if let Some(cookie) = jar.get(&state.settings.session_cookie_name) {
         let session_id = crate::types::SessionId(cookie.value().to_string());
         if let Err(e) = state.session_store.delete(&session_id).await {
             tracing::warn!(error = %e, "Session deletion failed during logout");
         }
     }
 
-    let clear_cookie = cookies::clear_session_cookie(&state.session_cookie_name);
-    (jar.remove(clear_cookie), Redirect::to(&state.logout_redirect))
+    let clear_cookie = cookies::clear_session_cookie(&state.settings.session_cookie_name);
+    (jar.remove(clear_cookie), Redirect::to(&state.settings.logout_redirect))
 }
 
 // ── Dev Login ──────────────────────────────────────────────────────
@@ -234,18 +202,13 @@ async fn dev_login<U: AccountResolver, S: SessionStore>(
     Query(params): Query<DevLoginParams>,
     headers: HeaderMap,
 ) -> Result<(PrivateCookieJar, Redirect), Response> {
-    if !state.dev_login_enabled {
-        return Err((StatusCode::FORBIDDEN, "Dev login not available").into_response());
-    }
+    // No runtime guard needed — route is only registered when dev_login_enabled is true
 
     let test_ppnum = params
         .ppnum
         .filter(|p| p.parse::<crate::types::Ppnum>().is_ok())
         .unwrap_or_else(|| "77700000001".to_string());
 
-    // Generate a deterministic ULID-formatted ppnum_id for dev.
-    // ULID = 26 chars of Crockford Base32 [0-9A-HJKMNP-TV-Z].
-    // Digits 0-9 are valid, so zero-pad the 11-digit ppnum to 26 chars.
     let test_ppnum_id: PpnumId = format!("{test_ppnum:0>26}")
         .parse()
         .expect("zero-padded digits are valid Crockford Base32");
@@ -259,7 +222,6 @@ async fn dev_login<U: AccountResolver, S: SessionStore>(
         .with_ppnum(test_ppnum_parsed)
         .with_email_verified(true);
 
-    // Resolve dev account mapping
     let user_id = state
         .account_resolver
         .resolve(&test_ppnum_id, &user_info)
@@ -288,21 +250,22 @@ async fn dev_login<U: AccountResolver, S: SessionStore>(
         })?;
 
     let session_cookie = cookies::session_cookie(
-        &state.session_cookie_name,
+        &state.settings.session_cookie_name,
         &session_id.to_string(),
-        state.session_ttl_days,
-        state.secure_cookies,
+        state.settings.session_ttl_days,
+        state.settings.secure_cookies,
     );
 
     tracing::info!(session_id = %session_id, "Dev login successful");
 
-    Ok((jar.add(session_cookie), Redirect::to(&state.login_redirect)))
+    Ok((jar.add(session_cookie), Redirect::to(&state.settings.login_redirect)))
 }
 
 // ── Helpers ────────────────────────────────────────────────────────
 
 fn login_error(error_redirect: &str, code: &str) -> Response {
-    Redirect::to(&format!("{error_redirect}?error={code}")).into_response()
+    let encoded = urlencoding::encode(code);
+    Redirect::to(&format!("{error_redirect}?error={encoded}")).into_response()
 }
 
 fn extract_user_agent(headers: &HeaderMap) -> Option<String> {
