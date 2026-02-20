@@ -7,7 +7,7 @@ use pasetors::version4::V4;
 use pasetors::{public, Public};
 use serde_json::Value as JsonValue;
 
-use crate::error::Error;
+use crate::error::{Error, TokenError};
 use crate::types::KeyId;
 
 const TOKEN_PREFIX: &str = "v4.public.";
@@ -29,6 +29,15 @@ impl PublicKey {
     }
 }
 
+#[cfg(feature = "token")]
+impl TryFrom<&crate::well_known::WellKnownPasetoKey> for PublicKey {
+    type Error = Error;
+
+    fn try_from(key: &crate::well_known::WellKnownPasetoKey) -> Result<Self, Error> {
+        parse_public_key_hex(&key.public_key_hex)
+    }
+}
+
 /// Parses a hex-encoded Ed25519 public key (32 bytes) into a `PublicKey`.
 ///
 /// # Errors
@@ -36,12 +45,13 @@ impl PublicKey {
 /// Returns `Error::Token` if the hex is invalid or the key length is not 32 bytes.
 pub fn parse_public_key_hex(public_key_hex: &str) -> Result<PublicKey, Error> {
     let bytes = hex::decode(public_key_hex)
-        .map_err(|e| Error::Token(format!("invalid hex: {e}")))?;
+        .map_err(|e| TokenError::VerificationFailed(format!("invalid hex: {e}")))?;
     if bytes.len() != 32 {
-        return Err(Error::Token(format!(
+        return Err(TokenError::VerificationFailed(format!(
             "invalid key length: expected 32, got {}",
             bytes.len()
-        )));
+        ))
+        .into());
     }
     let mut arr = [0u8; 32];
     arr.copy_from_slice(&bytes);
@@ -50,10 +60,12 @@ pub fn parse_public_key_hex(public_key_hex: &str) -> Result<PublicKey, Error> {
 
 /// Verified claims from a PASETO token.
 ///
-/// After successful verification, `iss` and `aud` are guaranteed present.
+/// After successful verification, `iss` and `aud` are stored as owned fields.
 /// Access them via typed accessors instead of raw JSON lookup.
 #[derive(Debug, Clone)]
 pub struct VerifiedClaims {
+    iss: String,
+    aud: String,
     inner: JsonValue,
 }
 
@@ -61,13 +73,13 @@ impl VerifiedClaims {
     /// Issuer claim (guaranteed present after verification).
     #[must_use]
     pub fn iss(&self) -> &str {
-        self.inner["iss"].as_str().expect("iss verified at construction")
+        &self.iss
     }
 
     /// Audience claim (guaranteed present after verification).
     #[must_use]
     pub fn aud(&self) -> &str {
-        self.inner["aud"].as_str().expect("aud verified at construction")
+        &self.aud
     }
 
     /// Subject claim.
@@ -102,50 +114,57 @@ pub fn verify_v4_public_access_token(
     expected_audience: &str,
 ) -> Result<VerifiedClaims, Error> {
     if !token_str.starts_with(TOKEN_PREFIX) {
-        return Err(Error::Token("invalid token format".into()));
+        return Err(TokenError::InvalidFormat.into());
     }
 
     let pk = AsymmetricPublicKey::<V4>::from(&public_key.bytes[..])
-        .map_err(|e| Error::Token(e.to_string()))?;
+        .map_err(|e| TokenError::VerificationFailed(e.to_string()))?;
 
-    // ClaimsValidationRules validates exp, nbf, iat by default
     let validation_rules = ClaimsValidationRules::new();
 
     let untrusted_token = UntrustedToken::<Public, V4>::try_from(token_str)
-        .map_err(|e| Error::Token(e.to_string()))?;
+        .map_err(|e| TokenError::VerificationFailed(e.to_string()))?;
 
-    // footer is None — the signature cryptographically binds the footer
     let trusted_token = public::verify(&pk, &untrusted_token, &validation_rules, None, None)
-        .map_err(|e| Error::Token(e.to_string()))?;
+        .map_err(|e| TokenError::VerificationFailed(e.to_string()))?;
 
-    // Parse payload claims to serde_json::Value
     let payload = trusted_token
         .payload_claims()
-        .ok_or_else(|| Error::Token("missing payload".into()))?;
+        .ok_or(TokenError::MissingPayload)?;
     let payload_str = payload
         .to_string()
-        .map_err(|e| Error::Token(e.to_string()))?;
+        .map_err(|e| TokenError::VerificationFailed(e.to_string()))?;
     let json_value: JsonValue = serde_json::from_str(&payload_str)
-        .map_err(|e| Error::Token(e.to_string()))?;
+        .map_err(|e| TokenError::VerificationFailed(e.to_string()))?;
 
-    validate_claim(&json_value, "iss", expected_issuer)?;
-    validate_claim(&json_value, "aud", expected_audience)?;
+    let iss = validate_claim(&json_value, "iss", expected_issuer)?;
+    let aud = validate_claim(&json_value, "aud", expected_audience)?;
 
-    Ok(VerifiedClaims { inner: json_value })
+    Ok(VerifiedClaims {
+        iss,
+        aud,
+        inner: json_value,
+    })
 }
 
-/// Validates that a JSON claim matches an expected value.
-fn validate_claim(claims: &JsonValue, key: &str, expected: &str) -> Result<(), Error> {
+/// Validates a JSON claim matches expected value; returns the actual value on success.
+fn validate_claim(
+    claims: &JsonValue,
+    key: &'static str,
+    expected: &str,
+) -> Result<String, TokenError> {
     let actual = claims
         .get(key)
         .and_then(|v| v.as_str())
-        .ok_or_else(|| Error::Token(format!("missing claim: {key}")))?;
+        .ok_or(TokenError::MissingClaim(key))?;
     if actual != expected {
-        return Err(Error::Token(format!(
-            "{key}: expected '{expected}', got '{actual}'"
-        )));
+        return Err(TokenError::ClaimMismatch {
+            claim: key,
+            expected: expected.to_string(),
+            actual: actual.to_string(),
+        });
     }
-    Ok(())
+    Ok(actual.to_string())
 }
 
 /// Extract key ID from a PASETO token without verifying signature.
@@ -161,16 +180,16 @@ pub fn extract_kid_from_token(token_str: &str) -> Result<KeyId, Error> {
 
 /// Extracts the key ID (kid) from an untrusted token's footer.
 pub(crate) fn extract_kid_from_untrusted_footer(footer_bytes: &[u8]) -> Result<KeyId, Error> {
-    let footer_str = std::str::from_utf8(footer_bytes)
-        .map_err(|_| Error::Token("invalid footer".into()))?;
+    let footer_str =
+        std::str::from_utf8(footer_bytes).map_err(|_| TokenError::InvalidFooter)?;
 
-    let footer_json: JsonValue = serde_json::from_str(footer_str)
-        .map_err(|_| Error::Token("invalid footer".into()))?;
+    let footer_json: JsonValue =
+        serde_json::from_str(footer_str).map_err(|_| TokenError::InvalidFooter)?;
 
     let kid = footer_json
         .get("kid")
         .and_then(|v| v.as_str())
-        .ok_or_else(|| Error::Token("missing footer claim: kid".into()))?
+        .ok_or(TokenError::MissingClaim("kid"))?
         .to_owned();
 
     Ok(KeyId(kid))
@@ -179,12 +198,12 @@ pub(crate) fn extract_kid_from_untrusted_footer(footer_bytes: &[u8]) -> Result<K
 /// Extracts the footer bytes from a PASETO token string.
 pub(crate) fn extract_footer_from_token(token_str: &str) -> Result<Vec<u8>, Error> {
     if !token_str.starts_with(TOKEN_PREFIX) {
-        return Err(Error::Token("invalid token format".into()));
+        return Err(TokenError::InvalidFormat.into());
     }
 
     let parts: Vec<&str> = token_str.split('.').collect();
     if parts.len() != 4 {
-        return Err(Error::Token("invalid token format".into()));
+        return Err(TokenError::InvalidFormat.into());
     }
 
     let footer_b64 = parts[3];
@@ -194,5 +213,5 @@ pub(crate) fn extract_footer_from_token(token_str: &str) -> Result<Vec<u8>, Erro
 
     URL_SAFE_NO_PAD
         .decode(footer_b64)
-        .map_err(|_| Error::Token("invalid footer".into()))
+        .map_err(|_| TokenError::InvalidFooter.into())
 }

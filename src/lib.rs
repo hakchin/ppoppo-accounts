@@ -14,7 +14,7 @@ pub mod well_known;
 pub mod middleware;
 
 // Re-exports for convenient access
-pub use error::Error;
+pub use error::{Error, TokenError};
 #[cfg(feature = "oauth")]
 pub use oauth::{AuthClient, AuthorizationRequest, OAuthConfig, TokenResponse, UserInfo};
 #[cfg(feature = "oauth")]
