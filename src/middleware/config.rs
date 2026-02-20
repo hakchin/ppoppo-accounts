@@ -113,13 +113,16 @@ impl PasAuthConfig {
             Ok("1") | Ok("true"),
         );
 
-        let cookie_key = std::env::var("COOKIE_KEY")
-            .ok()
-            .and_then(|k| {
-                let bytes = k.as_bytes();
-                Key::try_from(bytes).ok()
-            })
-            .unwrap_or_else(Key::generate);
+        let cookie_key = match std::env::var("COOKIE_KEY") {
+            Ok(k) => Key::try_from(k.as_bytes()).map_err(|_| {
+                AuthError::Config(
+                    "COOKIE_KEY is set but invalid (must be at least 64 bytes). \
+                     Remove the env var to use an ephemeral key, or provide a valid key."
+                        .into(),
+                )
+            })?,
+            Err(_) => Key::generate(),
+        };
 
         Ok(Self::new(AuthClient::new(config))
             .with_cookie_key(cookie_key)

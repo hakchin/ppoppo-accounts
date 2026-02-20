@@ -215,3 +215,153 @@ pub(crate) fn extract_footer_from_token(token_str: &str) -> Result<Vec<u8>, Erro
         .decode(footer_b64)
         .map_err(|_| TokenError::InvalidFooter.into())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ── parse_public_key_hex ─────────────────────────────────────
+
+    #[test]
+    fn parse_valid_hex_key() {
+        // 32 bytes = 64 hex chars
+        let hex = "a".repeat(64);
+        let key = parse_public_key_hex(&hex).unwrap();
+        assert_eq!(key.as_bytes().len(), 32);
+    }
+
+    #[test]
+    fn parse_invalid_hex() {
+        let result = parse_public_key_hex("not-hex");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn parse_wrong_length() {
+        // 16 bytes = 32 hex chars (too short)
+        let hex = "ab".repeat(16);
+        let result = parse_public_key_hex(&hex);
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(err_msg.contains("invalid key length"));
+    }
+
+    // ── verify_v4_public_access_token ────────────────────────────
+
+    fn generate_test_token(
+        issuer: &str,
+        audience: &str,
+    ) -> (PublicKey, String) {
+        use pasetors::claims::Claims;
+        use pasetors::footer::Footer;
+        use pasetors::keys::{AsymmetricKeyPair, Generate};
+
+        let kp = AsymmetricKeyPair::<V4>::generate().unwrap();
+
+        let mut claims = Claims::new().unwrap();
+        claims.issuer(issuer).unwrap();
+        claims.audience(audience).unwrap();
+        claims.subject("test-sub").unwrap();
+
+        let footer_json = serde_json::json!({"kid": "test-key-1"}).to_string();
+        let mut footer = Footer::new();
+        footer.parse_string(&footer_json).unwrap();
+
+        let token =
+            pasetors::public::sign(&kp.secret, &claims, Some(&footer), None).unwrap();
+
+        let pk_bytes = kp.public.as_bytes();
+        let hex = hex::encode(pk_bytes);
+        let public_key = parse_public_key_hex(&hex).unwrap();
+
+        (public_key, token)
+    }
+
+    #[test]
+    fn verify_valid_token() {
+        let (pk, token) = generate_test_token("accounts.ppoppo.com", "ppoppo/*");
+
+        let claims =
+            verify_v4_public_access_token(&pk, &token, "accounts.ppoppo.com", "ppoppo/*").unwrap();
+
+        assert_eq!(claims.iss(), "accounts.ppoppo.com");
+        assert_eq!(claims.aud(), "ppoppo/*");
+        assert_eq!(claims.sub(), Some("test-sub"));
+    }
+
+    #[test]
+    fn verify_wrong_issuer() {
+        let (pk, token) = generate_test_token("accounts.ppoppo.com", "ppoppo/*");
+
+        let result = verify_v4_public_access_token(&pk, &token, "wrong-issuer", "ppoppo/*");
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(err_msg.contains("iss"));
+    }
+
+    #[test]
+    fn verify_wrong_audience() {
+        let (pk, token) = generate_test_token("accounts.ppoppo.com", "ppoppo/*");
+
+        let result =
+            verify_v4_public_access_token(&pk, &token, "accounts.ppoppo.com", "wrong-aud");
+        assert!(result.is_err());
+        let err_msg = result.unwrap_err().to_string();
+        assert!(err_msg.contains("aud"));
+    }
+
+    #[test]
+    fn verify_wrong_key_fails() {
+        let (_pk, token) = generate_test_token("accounts.ppoppo.com", "ppoppo/*");
+
+        // Generate a different key
+        let different_hex = "bb".repeat(32);
+        let wrong_pk = parse_public_key_hex(&different_hex).unwrap();
+
+        let result =
+            verify_v4_public_access_token(&wrong_pk, &token, "accounts.ppoppo.com", "ppoppo/*");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn verify_invalid_format() {
+        let hex = "aa".repeat(32);
+        let pk = parse_public_key_hex(&hex).unwrap();
+
+        let result = verify_v4_public_access_token(&pk, "not-a-token", "iss", "aud");
+        assert!(matches!(
+            result,
+            Err(Error::Token(TokenError::InvalidFormat))
+        ));
+    }
+
+    // ── extract_kid_from_token ───────────────────────────────────
+
+    #[test]
+    fn extract_kid_from_valid_token() {
+        let (_pk, token) = generate_test_token("accounts.ppoppo.com", "ppoppo/*");
+
+        let kid = extract_kid_from_token(&token).unwrap();
+        assert_eq!(kid.to_string(), "test-key-1");
+    }
+
+    #[test]
+    fn extract_kid_invalid_format() {
+        let result = extract_kid_from_token("invalid");
+        assert!(result.is_err());
+    }
+
+    // ── VerifiedClaims ───────────────────────────────────────────
+
+    #[test]
+    fn verified_claims_accessors() {
+        let (pk, token) = generate_test_token("accounts.ppoppo.com", "ppoppo/*");
+
+        let claims =
+            verify_v4_public_access_token(&pk, &token, "accounts.ppoppo.com", "ppoppo/*").unwrap();
+
+        assert!(claims.get_claim("iss").is_some());
+        assert!(claims.get_claim("nonexistent").is_none());
+        assert!(claims.as_json().is_object());
+    }
+}

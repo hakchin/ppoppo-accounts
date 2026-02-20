@@ -211,11 +211,15 @@ async fn dev_login<U: AccountResolver, S: SessionStore>(
 
     let test_ppnum_id: PpnumId = format!("{test_ppnum:0>26}")
         .parse()
-        .expect("zero-padded digits are valid Crockford Base32");
+        .map_err(|_| {
+            (StatusCode::BAD_REQUEST, "Invalid ppnum for dev login").into_response()
+        })?;
 
     let test_ppnum_parsed: crate::types::Ppnum = test_ppnum
         .parse()
-        .expect("test_ppnum already validated above");
+        .map_err(|_| {
+            (StatusCode::BAD_REQUEST, "Invalid ppnum for dev login").into_response()
+        })?;
 
     let user_info = crate::oauth::UserInfo::new(test_ppnum_id)
         .with_email(format!("{test_ppnum}@dev.local"))

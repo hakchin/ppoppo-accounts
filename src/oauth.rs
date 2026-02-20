@@ -263,6 +263,30 @@ impl AuthClient {
         response.json::<TokenResponse>().await.map_err(Into::into)
     }
 
+    /// Exchange a refresh token for new tokens.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Error::Http`] on network failure, or
+    /// [`Error::OAuth`] if the token endpoint returns an error.
+    pub async fn refresh_token(&self, refresh_token: &str) -> Result<TokenResponse, Error> {
+        let params = [
+            ("grant_type", "refresh_token"),
+            ("refresh_token", refresh_token),
+            ("client_id", self.config.client_id.as_str()),
+        ];
+
+        let response = self
+            .http
+            .post(self.config.token_url.clone())
+            .form(&params)
+            .send()
+            .await?;
+
+        let response = Self::ensure_success(response, "token refresh").await?;
+        response.json::<TokenResponse>().await.map_err(Into::into)
+    }
+
     /// Fetch user info using an access token.
     ///
     /// # Errors
