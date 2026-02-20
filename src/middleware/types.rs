@@ -16,7 +16,14 @@ pub struct NewSession {
     pub ppnum_id: PpnumId,
     /// User ID returned by [`AccountResolver::resolve`](super::AccountResolver::resolve).
     pub user_id: UserId,
-    /// PAS refresh token (for token renewal via RTR).
+    /// PAS refresh token for this OAuth session.
+    ///
+    /// **OAuth consumers (RCW, CTW):** PAS does NOT apply Refresh Token Rotation
+    /// (RTR) for OAuth clients. Store this token as-is in the session; the same
+    /// token is reused across refreshes. Lifetime: 180 days of inactivity expiry.
+    ///
+    /// **1st-party clients (PCS):** RTR is applied — each refresh returns a new
+    /// token and invalidates the previous one (token family + replay detection).
     pub refresh_token: Option<String>,
     /// Client `User-Agent` header value.
     pub user_agent: Option<String>,
