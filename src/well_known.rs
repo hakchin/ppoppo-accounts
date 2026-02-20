@@ -17,7 +17,8 @@ pub struct WellKnownPasetoKey {
     pub kid: KeyId,
     pub public_key_hex: String,
     pub status: WellKnownKeyStatus,
-    pub created_at: String,
+    #[serde(with = "time::serde::rfc3339")]
+    pub created_at: time::OffsetDateTime,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

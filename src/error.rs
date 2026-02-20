@@ -22,8 +22,12 @@ pub enum TokenError {
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum Error {
-    #[error("OAuth2 error: {0}")]
-    OAuth(String),
+    #[error("OAuth2 {operation} failed (status={status:?}): {detail}")]
+    OAuth {
+        operation: &'static str,
+        status: Option<u16>,
+        detail: String,
+    },
     #[cfg(feature = "oauth")]
     #[error("HTTP error: {0}")]
     Http(#[from] reqwest::Error),

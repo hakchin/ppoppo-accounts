@@ -152,8 +152,8 @@ pub struct UserInfo {
     pub ppnum: Option<Ppnum>,
     #[serde(default)]
     pub email_verified: Option<bool>,
-    #[serde(default)]
-    pub created_at: Option<String>,
+    #[serde(default, with = "time::serde::rfc3339::option")]
+    pub created_at: Option<time::OffsetDateTime>,
 }
 
 impl UserInfo {
@@ -199,6 +199,13 @@ impl AuthClient {
             config,
             http: reqwest::Client::new(),
         }
+    }
+
+    /// Use a custom HTTP client (for connection pool reuse or testing).
+    #[must_use]
+    pub fn with_http_client(mut self, client: reqwest::Client) -> Self {
+        self.http = client;
+        self
     }
 
     /// Generate an authorization URL with PKCE parameters.
@@ -277,16 +284,18 @@ impl AuthClient {
     /// Checks HTTP response status; returns the response on success or an error with details.
     async fn ensure_success(
         response: reqwest::Response,
-        operation: &str,
+        operation: &'static str,
     ) -> Result<reqwest::Response, Error> {
         if response.status().is_success() {
             return Ok(response);
         }
-        let status = response.status();
+        let status = response.status().as_u16();
         let body = response.text().await.unwrap_or_default();
-        Err(Error::OAuth(format!(
-            "{operation} failed: {status} - {body}"
-        )))
+        Err(Error::OAuth {
+            operation,
+            status: Some(status),
+            detail: body,
+        })
     }
 }
 
