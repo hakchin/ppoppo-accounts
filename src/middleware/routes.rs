@@ -229,9 +229,8 @@ async fn dev_login<U: AccountResolver, S: SessionStore>(
             (StatusCode::BAD_REQUEST, "Invalid ppnum for dev login").into_response()
         })?;
 
-    let user_info = crate::oauth::UserInfo::new(test_ppnum_id)
+    let user_info = crate::oauth::UserInfo::new(test_ppnum_id, test_ppnum_parsed)
         .with_email(format!("{test_ppnum}@dev.local"))
-        .with_ppnum(test_ppnum_parsed)
         .with_email_verified(true);
 
     let user_id = state

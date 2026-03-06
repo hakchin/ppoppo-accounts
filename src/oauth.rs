@@ -147,8 +147,7 @@ pub struct UserInfo {
     pub sub: PpnumId,
     #[serde(default)]
     pub email: Option<String>,
-    #[serde(default)]
-    pub ppnum: Option<Ppnum>,
+    pub ppnum: Ppnum,
     #[serde(default)]
     pub email_verified: Option<bool>,
     #[serde(default, with = "time::serde::rfc3339::option")]
@@ -156,13 +155,13 @@ pub struct UserInfo {
 }
 
 impl UserInfo {
-    /// Create a new `UserInfo` with only the required `sub` field.
+    /// Create a new `UserInfo` with required fields.
     #[must_use]
-    pub fn new(sub: PpnumId) -> Self {
+    pub fn new(sub: PpnumId, ppnum: Ppnum) -> Self {
         Self {
             sub,
+            ppnum,
             email: None,
-            ppnum: None,
             email_verified: None,
             created_at: None,
         }
@@ -172,13 +171,6 @@ impl UserInfo {
     #[must_use]
     pub fn with_email(mut self, email: impl Into<String>) -> Self {
         self.email = Some(email.into());
-        self
-    }
-
-    /// Set the ppnum.
-    #[must_use]
-    pub fn with_ppnum(mut self, ppnum: Ppnum) -> Self {
-        self.ppnum = Some(ppnum);
         self
     }
 
