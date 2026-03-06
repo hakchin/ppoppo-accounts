@@ -1,6 +1,6 @@
 [package]
 name = "ppoppo-accounts"
-version = "0.6.0"
+version = "0.7.0"
 edition = "2024"
 rust-version = "1.85"
 license = "MIT OR Apache-2.0"
@@ -48,3 +48,14 @@ axum-extra = { version = "0.12", features = ["cookie-private"], optional = true 
 tracing = { version = "0.1", optional = true }
 time = { version = "0.3", features = ["serde", "serde-well-known"] }
 urlencoding = { version = "2", optional = true }
+
+[dev-dependencies]
+static_assertions = "1"
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"

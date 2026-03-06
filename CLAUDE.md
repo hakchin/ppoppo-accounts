@@ -8,7 +8,7 @@
 ppoppo-accounts is a **public crates.io package** providing OAuth2 PKCE client, PASETO v4.public token verification, and Axum auth middleware for PAS (Ppoppo Accounts System).
 
 - **crates.io**: `ppoppo-accounts`
-- **Version**: 0.6.0
+- **Version**: 0.7.0
 - **License**: MIT OR Apache-2.0
 - **Rust edition**: 2024 (MSRV 1.85)
 - **Repository**: https://github.com/hakchin/ppoppo-accounts

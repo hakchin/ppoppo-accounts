@@ -15,6 +15,7 @@ use crate::types::{PpnumId, SessionId, UserId};
 ///
 /// Can be used as an Axum extractor when inserted into request extensions.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct AuthPpnum {
     /// Session ID (from cookie).
     pub session_id: SessionId,
@@ -22,6 +23,21 @@ pub struct AuthPpnum {
     pub user_id: UserId,
     /// PAS ppnum_id (immutable ULID, = OAuth `sub` claim).
     pub ppnum_id: PpnumId,
+}
+
+impl AuthPpnum {
+    /// Create a new `AuthPpnum`.
+    ///
+    /// Use this in your [`SessionStore::find`](super::SessionStore::find) implementation
+    /// when using `AuthPpnum` as your `AuthContext` type.
+    #[must_use]
+    pub fn new(session_id: SessionId, user_id: UserId, ppnum_id: PpnumId) -> Self {
+        Self {
+            session_id,
+            user_id,
+            ppnum_id,
+        }
+    }
 }
 
 impl<S: Send + Sync> FromRequestParts<S> for AuthPpnum {

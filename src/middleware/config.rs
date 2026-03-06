@@ -4,6 +4,11 @@ use url::Url;
 use super::error::AuthError;
 use crate::oauth::{AuthClient, OAuthConfig};
 
+const DEFAULT_SESSION_COOKIE_NAME: &str = "__ppoppo_session";
+const DEFAULT_SESSION_TTL_DAYS: i64 = 30;
+const DEFAULT_AUTH_PATH: &str = "/api/auth";
+const DEFAULT_ERROR_REDIRECT: &str = "/login";
+
 /// Shared auth settings used by both config and runtime state.
 #[derive(Clone)]
 pub(crate) struct AuthSettings {
@@ -22,13 +27,13 @@ impl AuthSettings {
     fn defaults() -> Self {
         Self {
             cookie_key: Key::generate(),
-            session_cookie_name: "__ppoppo_session".into(),
-            session_ttl_days: 30,
+            session_cookie_name: DEFAULT_SESSION_COOKIE_NAME.into(),
+            session_ttl_days: DEFAULT_SESSION_TTL_DAYS,
             secure_cookies: true,
-            auth_path: "/api/auth".into(),
+            auth_path: DEFAULT_AUTH_PATH.into(),
             login_redirect: "/".into(),
             logout_redirect: "/".into(),
-            error_redirect: "/login".into(),
+            error_redirect: DEFAULT_ERROR_REDIRECT.into(),
             dev_login_enabled: false,
         }
     }

@@ -89,8 +89,16 @@ pub struct SessionId(pub String);
 pub struct KeyId(pub String);
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
+    use static_assertions::assert_impl_all;
+
+    assert_impl_all!(PpnumId: Send, Sync, Copy);
+    assert_impl_all!(Ppnum: Send, Sync);
+    assert_impl_all!(UserId: Send, Sync);
+    assert_impl_all!(SessionId: Send, Sync);
+    assert_impl_all!(KeyId: Send, Sync);
 
     #[test]
     fn valid_ppnum() {

@@ -15,6 +15,14 @@ use super::traits::{AccountResolver, SessionStore};
 use super::types::NewSession;
 use crate::types::PpnumId;
 
+const ROUTE_LOGIN: &str = "/login";
+const ROUTE_CALLBACK: &str = "/callback";
+const ROUTE_LOGOUT: &str = "/logout";
+const ROUTE_DEV_LOGIN: &str = "/dev-login";
+const HEADER_X_FORWARDED_FOR: &str = "x-forwarded-for";
+const HEADER_X_REAL_IP: &str = "x-real-ip";
+const DEFAULT_DEV_PPNUM: &str = "77700000001";
+
 /// Create the PAS authentication router.
 pub fn auth_routes<U, S>(config: PasAuthConfig, account_resolver: U, session_store: S) -> Router
 where
@@ -31,15 +39,15 @@ where
     };
 
     let mut router = Router::new()
-        .route(&format!("{auth_path}/login"), get(login::<U, S>))
-        .route(&format!("{auth_path}/callback"), get(callback::<U, S>))
+        .route(&format!("{auth_path}{ROUTE_LOGIN}"), get(login::<U, S>))
+        .route(&format!("{auth_path}{ROUTE_CALLBACK}"), get(callback::<U, S>))
         .route(
-            &format!("{auth_path}/logout"),
+            &format!("{auth_path}{ROUTE_LOGOUT}"),
             get(logout::<U, S>).post(logout::<U, S>),
         );
 
     if state.settings.dev_login_enabled {
-        router = router.route(&format!("{auth_path}/dev-login"), get(dev_login::<U, S>));
+        router = router.route(&format!("{auth_path}{ROUTE_DEV_LOGIN}"), get(dev_login::<U, S>));
     }
 
     router.with_state(state)
@@ -207,7 +215,7 @@ async fn dev_login<U: AccountResolver, S: SessionStore>(
     let test_ppnum = params
         .ppnum
         .filter(|p| p.parse::<crate::types::Ppnum>().is_ok())
-        .unwrap_or_else(|| "77700000001".to_string());
+        .unwrap_or_else(|| DEFAULT_DEV_PPNUM.to_string());
 
     let test_ppnum_id: PpnumId = format!("{test_ppnum:0>26}")
         .parse()
@@ -281,13 +289,13 @@ fn extract_user_agent(headers: &HeaderMap) -> Option<String> {
 
 fn extract_client_ip(headers: &HeaderMap) -> Option<String> {
     headers
-        .get("x-forwarded-for")
+        .get(HEADER_X_FORWARDED_FOR)
         .and_then(|v| v.to_str().ok())
         .and_then(|s| s.split(',').next())
         .map(|s| s.trim().to_string())
         .or_else(|| {
             headers
-                .get("x-real-ip")
+                .get(HEADER_X_REAL_IP)
                 .and_then(|v| v.to_str().ok())
                 .map(|s| s.to_string())
         })

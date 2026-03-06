@@ -11,6 +11,7 @@ use crate::error::{Error, TokenError};
 use crate::types::KeyId;
 
 const TOKEN_PREFIX: &str = "v4.public.";
+const ED25519_PUBLIC_KEY_SIZE: usize = 32;
 
 /// Ed25519 public key (32 bytes) for token verification.
 ///
@@ -18,13 +19,13 @@ const TOKEN_PREFIX: &str = "v4.public.";
 /// and PASETO verification, no PASERK key ID computation.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PublicKey {
-    bytes: [u8; 32],
+    bytes: [u8; ED25519_PUBLIC_KEY_SIZE],
 }
 
 impl PublicKey {
     /// Get the raw key bytes.
     #[must_use]
-    pub fn as_bytes(&self) -> &[u8; 32] {
+    pub fn as_bytes(&self) -> &[u8; ED25519_PUBLIC_KEY_SIZE] {
         &self.bytes
     }
 }
@@ -46,14 +47,14 @@ impl TryFrom<&crate::well_known::WellKnownPasetoKey> for PublicKey {
 pub fn parse_public_key_hex(public_key_hex: &str) -> Result<PublicKey, Error> {
     let bytes = hex::decode(public_key_hex)
         .map_err(|e| TokenError::VerificationFailed(format!("invalid hex: {e}")))?;
-    if bytes.len() != 32 {
+    if bytes.len() != ED25519_PUBLIC_KEY_SIZE {
         return Err(TokenError::VerificationFailed(format!(
-            "invalid key length: expected 32, got {}",
+            "invalid key length: expected {ED25519_PUBLIC_KEY_SIZE}, got {}",
             bytes.len()
         ))
         .into());
     }
-    let mut arr = [0u8; 32];
+    let mut arr = [0u8; ED25519_PUBLIC_KEY_SIZE];
     arr.copy_from_slice(&bytes);
     Ok(PublicKey { bytes: arr })
 }
@@ -217,8 +218,13 @@ pub(crate) fn extract_footer_from_token(token_str: &str) -> Result<Vec<u8>, Erro
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
+    use static_assertions::assert_impl_all;
+
+    assert_impl_all!(PublicKey: Send, Sync);
+    assert_impl_all!(VerifiedClaims: Send, Sync);
 
     // ── parse_public_key_hex ─────────────────────────────────────
 

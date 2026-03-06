@@ -39,3 +39,12 @@ pub enum Error {
     #[error("Invalid URL: {0}")]
     InvalidUrl(#[from] url::ParseError),
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use static_assertions::assert_impl_all;
+
+    assert_impl_all!(Error: Send, Sync);
+    assert_impl_all!(TokenError: Send, Sync);
+}

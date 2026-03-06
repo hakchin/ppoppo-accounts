@@ -3,6 +3,7 @@ use axum::response::{IntoResponse, Response};
 
 /// Authentication errors for the middleware layer.
 #[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
 pub enum AuthError {
     /// No valid session found.
     #[error("Not authenticated")]
@@ -46,4 +47,12 @@ impl From<crate::error::Error> for AuthError {
     fn from(e: crate::error::Error) -> Self {
         Self::OAuth(e.to_string())
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use static_assertions::assert_impl_all;
+
+    assert_impl_all!(AuthError: Send, Sync);
 }

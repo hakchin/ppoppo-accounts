@@ -11,6 +11,7 @@ use crate::types::{PpnumId, UserId};
 /// display at login time, but PAS-owned fields (`ppnum`, `email`) must NOT be
 /// persisted in the consumer's database. Fetch via PAS userinfo API when needed.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct NewSession {
     /// PAS ppnum identifier (OAuth `sub` claim, ULID format).
     pub ppnum_id: PpnumId,

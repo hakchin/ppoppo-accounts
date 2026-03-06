@@ -5,6 +5,10 @@ use crate::error::Error;
 use crate::pkce;
 use crate::types::{Ppnum, PpnumId};
 
+const DEFAULT_AUTH_URL: &str = "https://accounts.ppoppo.com/oauth/authorize";
+const DEFAULT_TOKEN_URL: &str = "https://accounts.ppoppo.com/oauth/token";
+const DEFAULT_USERINFO_URL: &str = "https://accounts.ppoppo.com/oauth/userinfo";
+
 /// Ppoppo Accounts `OAuth2` configuration.
 ///
 /// Required fields are constructor parameters — no runtime "missing field" errors.
@@ -33,19 +37,14 @@ impl OAuthConfig {
     ///
     /// Required fields are parameters — compile-time enforcement, no `Result`.
     #[must_use]
+    #[allow(clippy::expect_used)] // Infallible parse — URLs are compile-time constants
     pub fn new(client_id: impl Into<String>, redirect_uri: Url) -> Self {
         Self {
             client_id: client_id.into(),
             redirect_uri,
-            auth_url: "https://accounts.ppoppo.com/oauth/authorize"
-                .parse()
-                .expect("valid default URL"),
-            token_url: "https://accounts.ppoppo.com/oauth/token"
-                .parse()
-                .expect("valid default URL"),
-            userinfo_url: "https://accounts.ppoppo.com/oauth/userinfo"
-                .parse()
-                .expect("valid default URL"),
+            auth_url: DEFAULT_AUTH_URL.parse().expect("valid default URL"),
+            token_url: DEFAULT_TOKEN_URL.parse().expect("valid default URL"),
+            userinfo_url: DEFAULT_USERINFO_URL.parse().expect("valid default URL"),
             scopes: vec!["openid".into(), "profile".into()],
         }
     }
@@ -324,6 +323,7 @@ impl AuthClient {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
 

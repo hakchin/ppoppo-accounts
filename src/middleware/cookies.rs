@@ -3,6 +3,7 @@ use time::Duration;
 
 const PKCE_COOKIE_NAME: &str = "__ppoppo_pkce";
 const STATE_COOKIE_NAME: &str = "__ppoppo_state";
+const PKCE_COOKIE_TTL_MINUTES: i64 = 5;
 
 /// Create PKCE verifier + state cookies for the authorization request.
 pub(super) fn pkce_cookies(
@@ -16,7 +17,7 @@ pub(super) fn pkce_cookies(
         .secure(secure)
         .same_site(SameSite::Lax)
         .path(auth_path.to_string())
-        .max_age(Duration::minutes(5))
+        .max_age(Duration::minutes(PKCE_COOKIE_TTL_MINUTES))
         .build();
 
     let state = Cookie::build((STATE_COOKIE_NAME, state.to_string()))
@@ -24,7 +25,7 @@ pub(super) fn pkce_cookies(
         .secure(secure)
         .same_site(SameSite::Lax)
         .path(auth_path.to_string())
-        .max_age(Duration::minutes(5))
+        .max_age(Duration::minutes(PKCE_COOKIE_TTL_MINUTES))
         .build();
 
     (verifier, state)
